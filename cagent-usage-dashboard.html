@@ -1,0 +1,1722 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>cagent · Usage observability</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+/* ---- assets/css/main.css ---- */
+/* ===================================
+   CSS Variables & Design System
+   =================================== */
+
+:root {
+    /* Background gradients */
+    --bg-primary: linear-gradient(135deg, #f6f8fc 0%, #eef2f9 100%);
+    --bg-secondary: #eef2f9;
+    --glass: rgba(255, 255, 255, 0.72);
+    --glass-strong: rgba(255, 255, 255, 0.88);
+
+    /* Borders and strokes */
+    --border-light: rgba(17, 24, 39, 0.08);
+    --border-medium: rgba(17, 24, 39, 0.15);
+    --border-dark: rgba(17, 24, 39, 0.25);
+
+    /* Text colors */
+    --text-primary: #101828;
+    --text-secondary: #475467;
+    --text-tertiary: #667085;
+    --text-inverse: #ffffff;
+
+    /* Brand and semantic colors */
+    --brand-primary: #5b6cff;
+    --brand-secondary: #8098ff;
+    --success: #067647;
+    --success-light: #12b76a;
+    --error: #b42318;
+    --error-light: #f04438;
+    --warning: #b54708;
+    --warning-light: #f79009;
+    --info: #2e90fa;
+    --info-light: #53b1fd;
+
+    /* Shadows */
+    --shadow-sm: 0 1px 3px rgba(16, 24, 40, 0.1), 0 1px 2px rgba(16, 24, 40, 0.06);
+    --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08), 0 2px 6px rgba(16, 24, 40, 0.04);
+    --shadow-lg: 0 14px 36px rgba(16, 24, 40, 0.12), 0 6px 16px rgba(16, 24, 40, 0.06);
+    --shadow-xl: 0 24px 48px rgba(16, 24, 40, 0.16), 0 12px 24px rgba(16, 24, 40, 0.08);
+
+    /* Chart colors */
+    --chart-1: #5b6cff;
+    --chart-2: #12b76a;
+    --chart-3: #f79009;
+    --chart-4: #f04438;
+    --chart-5: #7a5af8;
+    --chart-6: #06aed4;
+    --chart-7: #fd853a;
+    --chart-8: #fb6f92;
+
+    /* Spacing */
+    --space-xs: 4px;
+    --space-sm: 8px;
+    --space-md: 16px;
+    --space-lg: 24px;
+    --space-xl: 32px;
+    --space-2xl: 48px;
+
+    /* Border radius */
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+    --radius-full: 9999px;
+
+    /* Transitions */
+    --transition-fast: 150ms ease-in-out;
+    --transition-base: 200ms ease-in-out;
+    --transition-slow: 300ms ease-in-out;
+}
+
+/* ===================================
+   Reset & Base Styles
+   =================================== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    min-height: 100vh;
+}
+
+/* ===================================
+   Typography
+   =================================== */
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--text-primary);
+}
+
+h1 { font-size: 28px; }
+h2 { font-size: 22px; }
+h3 { font-size: 18px; }
+h4 { font-size: 16px; }
+
+p {
+    line-height: 1.6;
+}
+
+/* ===================================
+   Layout
+   =================================== */
+
+.container {
+    width: 100%;
+    max-width: 1920px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+}
+
+.dashboard-main {
+    padding: var(--space-xl) 0;
+    min-height: calc(100vh - 180px);
+}
+
+/* ===================================
+   Glass Card Effect
+   =================================== */
+
+.glass-card {
+    background: var(--glass);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-base);
+}
+
+.glass-card:hover {
+    box-shadow: var(--shadow-lg);
+    border-color: var(--border-medium);
+}
+
+/* ===================================
+   Header
+   =================================== */
+
+.dashboard-header {
+    background: var(--glass-strong);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border-light);
+    padding: var(--space-lg) 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow-sm);
+}
+
+.header-content {
+    max-width: 1920px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+.header-left {
+    flex: 1;
+}
+
+.dashboard-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.dashboard-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+}
+
+.last-updated {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    padding: var(--space-sm) var(--space-md);
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-light);
+}
+
+.last-updated span {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* ===================================
+   Buttons
+   =================================== */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    border: none;
+    cursor: pointer;
+    transition: all var(--transition-base);
+    white-space: nowrap;
+    text-decoration: none;
+}
+
+.btn-primary {
+    background: var(--brand-primary);
+    color: var(--text-inverse);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-primary:hover {
+    background: #4a5bef;
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+}
+
+.btn-primary:active {
+    transform: translateY(0);
+}
+
+.btn-secondary {
+    background: var(--glass-strong);
+    color: var(--text-primary);
+    border: 1px solid var(--border-light);
+}
+
+.btn-secondary:hover {
+    border-color: var(--border-medium);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-text {
+    background: transparent;
+    color: var(--brand-primary);
+    padding: 8px 12px;
+}
+
+.btn-text:hover {
+    background: rgba(91, 108, 255, 0.1);
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.btn-icon {
+    font-size: 16px;
+}
+
+.btn-icon-only {
+    background: transparent;
+    border: none;
+    padding: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+}
+
+.btn-icon-only:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+/* ===================================
+   Sections
+   =================================== */
+
+.filter-section {
+    margin-bottom: var(--space-xl);
+    padding: var(--space-lg);
+}
+
+.filter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-lg);
+}
+
+.section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.kpi-section {
+    margin-bottom: var(--space-xl);
+}
+
+.charts-section {
+    margin-bottom: var(--space-xl);
+}
+
+.tables-section {
+    display: grid;
+    gap: var(--space-xl);
+    margin-bottom: var(--space-xl);
+}
+
+/* ===================================
+   Footer
+   =================================== */
+
+.dashboard-footer {
+    background: var(--glass-strong);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border-light);
+    padding: var(--space-lg) 0;
+    margin-top: auto;
+}
+
+.footer-content {
+    max-width: 1920px;
+    margin: 0 auto;
+    padding: 0 var(--space-lg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+.footer-text {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+.footer-text span {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.separator {
+    margin: 0 var(--space-sm);
+    color: var(--border-medium);
+}
+
+/* ===================================
+   Utility Classes
+   =================================== */
+
+.hidden {
+    display: none !important;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+    cursor: wait;
+}
+
+.fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.slide-in {
+    animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+/* ===================================
+   Modal
+   =================================== */
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(16, 24, 40, 0.4);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+.modal-content {
+    position: relative;
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: var(--space-xl);
+    z-index: 1;
+    animation: modalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-lg);
+}
+
+.modal-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    font-size: 28px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px;
+    color: var(--text-tertiary);
+    transition: all var(--transition-fast);
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: var(--radius-sm);
+}
+
+.modal-body {
+    margin-bottom: var(--space-lg);
+}
+
+/* ===================================
+   Export Options
+   =================================== */
+
+.export-options {
+    display: grid;
+    gap: var(--space-md);
+}
+
+.export-option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-lg);
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    text-align: left;
+}
+
+.export-option:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: var(--brand-primary);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-2px);
+}
+
+.export-icon {
+    font-size: 32px;
+}
+
+.export-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.export-info strong {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.export-info span {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+/* ===================================
+   Scrollbar Styling
+   =================================== */
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* ---- assets/css/components.css ---- */
+/* ===================================
+   Filter Components
+   =================================== */
+
+.filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-lg);
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.filter-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.date-range-buttons {
+    display: flex;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    color: var(--text-primary);
+}
+
+.filter-btn:hover {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: var(--brand-primary);
+}
+
+.filter-btn.active {
+    background: var(--brand-primary);
+    color: white;
+    border-color: var(--brand-primary);
+}
+
+.custom-date-range {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-top: var(--space-sm);
+}
+
+.date-input {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 13px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--text-primary);
+    font-family: inherit;
+}
+
+.date-input:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px rgba(91, 108, 255, 0.1);
+}
+
+.filter-select {
+    padding: 10px 12px;
+    font-size: 13px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--transition-base);
+}
+
+.filter-select:hover {
+    border-color: var(--border-medium);
+}
+
+.filter-select:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px rgba(91, 108, 255, 0.1);
+}
+
+.filter-input {
+    padding: 10px 12px;
+    font-size: 13px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--text-primary);
+    font-family: inherit;
+    width: 100%;
+    transition: all var(--transition-base);
+}
+
+.filter-input:hover {
+    border-color: var(--border-medium);
+}
+
+.filter-input:focus {
+    outline: none;
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 3px rgba(91, 108, 255, 0.1);
+}
+
+.filter-input::placeholder {
+    color: var(--text-tertiary);
+}
+
+/* ===================================
+   KPI Cards
+   =================================== */
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-lg);
+}
+
+.kpi-card {
+    background: var(--glass);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: var(--space-lg);
+    transition: all var(--transition-base);
+    position: relative;
+    overflow: hidden;
+}
+
+.kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, var(--brand-primary), var(--brand-secondary));
+}
+
+.kpi-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+    border-color: var(--border-medium);
+}
+
+.kpi-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--space-md);
+}
+
+.kpi-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.kpi-icon {
+    font-size: 24px;
+    opacity: 0.6;
+}
+
+.kpi-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: var(--space-sm);
+    letter-spacing: -0.5px;
+}
+
+.kpi-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.kpi-change {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.kpi-change.positive {
+    color: var(--success);
+}
+
+.kpi-change.negative {
+    color: var(--error);
+}
+
+.kpi-change-icon {
+    font-size: 14px;
+}
+
+.kpi-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+
+/* ===================================
+   Charts
+   =================================== */
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-lg);
+}
+
+.chart-card {
+    padding: var(--space-lg);
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+.chart-large {
+    grid-column: span 2;
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-md);
+}
+
+.chart-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.chart-actions {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.chart-body {
+    flex: 1;
+    position: relative;
+    min-height: 200px;
+}
+
+.chart-body canvas {
+    max-height: 100%;
+}
+
+/* ===================================
+   Data Tables
+   =================================== */
+
+.table-card {
+    padding: var(--space-lg);
+}
+
+.table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-lg);
+}
+
+.table-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.table-container {
+    overflow-x: auto;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-light);
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.data-table thead {
+    background: rgba(91, 108, 255, 0.05);
+}
+
+.data-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid var(--border-light);
+    white-space: nowrap;
+}
+
+.data-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: all var(--transition-base);
+}
+
+.data-table th.sortable:hover {
+    background: rgba(91, 108, 255, 0.1);
+    color: var(--brand-primary);
+}
+
+.data-table th.sortable::after {
+    content: ' ↕';
+    opacity: 0.3;
+}
+
+.data-table th.sortable.asc::after {
+    content: ' ↑';
+    opacity: 1;
+}
+
+.data-table th.sortable.desc::after {
+    content: ' ↓';
+    opacity: 1;
+}
+
+.data-table tbody tr {
+    border-bottom: 1px solid var(--border-light);
+    transition: all var(--transition-base);
+}
+
+.data-table tbody tr:hover {
+    background: rgba(91, 108, 255, 0.03);
+}
+
+.data-table td {
+    padding: 14px 16px;
+    color: var(--text-primary);
+}
+
+.data-table td:first-child {
+    font-weight: 600;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: var(--radius-full);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.status-pending {
+    background: rgba(251, 191, 36, 0.1);
+    color: #92400e;
+}
+
+.status-processing {
+    background: rgba(59, 130, 246, 0.1);
+    color: #1e3a8a;
+}
+
+.status-shipped {
+    background: rgba(139, 92, 246, 0.1);
+    color: #5b21b6;
+}
+
+.status-delivered {
+    background: rgba(34, 197, 94, 0.1);
+    color: #14532d;
+}
+
+.status-cancelled {
+    background: rgba(239, 68, 68, 0.1);
+    color: #991b1b;
+}
+
+/* Table pagination */
+.table-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: var(--space-lg);
+    gap: var(--space-md);
+    flex-wrap: wrap;
+}
+
+.pagination-info {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.pagination-controls {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+.page-btn {
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    min-width: 36px;
+    text-align: center;
+}
+
+.page-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: var(--brand-primary);
+}
+
+.page-btn.active {
+    background: var(--brand-primary);
+    color: white;
+    border-color: var(--brand-primary);
+}
+
+.page-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ===================================
+   Loading States
+   =================================== */
+
+.loading-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(91, 108, 255, 0.1);
+    border-top-color: var(--brand-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.skeleton {
+    background: linear-gradient(90deg,
+        rgba(0, 0, 0, 0.05) 25%,
+        rgba(0, 0, 0, 0.02) 50%,
+        rgba(0, 0, 0, 0.05) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: var(--radius-sm);
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* ===================================
+   Empty States
+   =================================== */
+
+.empty-state {
+    text-align: center;
+    padding: var(--space-2xl);
+    color: var(--text-tertiary);
+}
+
+.empty-state-icon {
+    font-size: 48px;
+    margin-bottom: var(--space-md);
+    opacity: 0.5;
+}
+
+.empty-state-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-sm);
+}
+
+.empty-state-text {
+    font-size: 14px;
+    color: var(--text-tertiary);
+}
+
+/* ---- assets/css/responsive.css ---- */
+/* ===================================
+   Responsive Design
+   Breakpoints:
+   - Mobile: < 640px
+   - Tablet: 640px - 1024px
+   - Desktop: 1024px - 1536px
+   - Wide: > 1536px
+   =================================== */
+
+/* ===================================
+   Mobile Styles (< 640px)
+   =================================== */
+
+@media (max-width: 639px) {
+    .container {
+        padding: 0 var(--space-md);
+    }
+
+    /* Header */
+    .header-content {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-md);
+        padding: 0 var(--space-md);
+    }
+
+    .header-right {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: space-between;
+    }
+
+    .last-updated {
+        order: 3;
+        width: 100%;
+        text-align: center;
+    }
+
+    .dashboard-title {
+        font-size: 20px;
+    }
+
+    /* Filters */
+    .filter-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .date-range-buttons {
+        flex-direction: column;
+    }
+
+    .filter-btn {
+        width: 100%;
+    }
+
+    /* KPI Cards */
+    .kpi-grid {
+        grid-template-columns: 1fr;
+        gap: var(--space-md);
+    }
+
+    .kpi-value {
+        font-size: 28px;
+    }
+
+    /* Charts */
+    .charts-grid {
+        grid-template-columns: 1fr;
+        gap: var(--space-md);
+    }
+
+    .chart-large {
+        grid-column: span 1;
+    }
+
+    .chart-card {
+        min-height: 250px;
+    }
+
+    /* Tables */
+    .table-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--space-md);
+    }
+
+    .data-table {
+        font-size: 12px;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 10px 8px;
+    }
+
+    .data-table th {
+        font-size: 10px;
+    }
+
+    /* Hide less important columns on mobile */
+    .data-table th:nth-child(n+5),
+    .data-table td:nth-child(n+5) {
+        display: none;
+    }
+
+    .table-pagination {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .pagination-controls {
+        justify-content: center;
+    }
+
+    /* Footer */
+    .footer-content {
+        flex-direction: column;
+        text-align: center;
+        gap: var(--space-sm);
+        padding: 0 var(--space-md);
+    }
+
+    /* Modal */
+    .modal-content {
+        width: 95%;
+        padding: var(--space-lg);
+    }
+
+    .modal-title {
+        font-size: 18px;
+    }
+
+    /* Buttons */
+    .btn {
+        font-size: 12px;
+        padding: 8px 14px;
+    }
+
+    .btn-sm {
+        padding: 6px 10px;
+    }
+}
+
+/* ===================================
+   Tablet Styles (640px - 1024px)
+   =================================== */
+
+@media (min-width: 640px) and (max-width: 1023px) {
+    /* KPI Cards */
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* Charts */
+    .charts-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .chart-large {
+        grid-column: span 2;
+    }
+
+    /* Tables - hide one less-important column */
+    .data-table th:last-child,
+    .data-table td:last-child {
+        display: none;
+    }
+}
+
+/* ===================================
+   Desktop Styles (1024px - 1536px)
+   =================================== */
+
+@media (min-width: 1024px) and (max-width: 1535px) {
+    /* KPI Cards */
+    .kpi-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    /* Charts */
+    .charts-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* ===================================
+   Wide Screen Styles (> 1536px)
+   =================================== */
+
+@media (min-width: 1536px) {
+    /* KPI Cards */
+    .kpi-grid {
+        grid-template-columns: repeat(6, 1fr);
+    }
+
+    /* Larger spacing on wide screens */
+    .dashboard-main {
+        padding: var(--space-2xl) 0;
+    }
+
+    .kpi-section,
+    .charts-section,
+    .tables-section {
+        margin-bottom: var(--space-2xl);
+    }
+}
+
+/* ===================================
+   Print Styles
+   =================================== */
+
+@media print {
+    body {
+        background: white;
+    }
+
+    .dashboard-header,
+    .dashboard-footer,
+    .filter-section,
+    .btn,
+    .modal {
+        display: none !important;
+    }
+
+    .glass-card {
+        background: white;
+        border: 1px solid #ddd;
+        box-shadow: none;
+        page-break-inside: avoid;
+    }
+
+    .kpi-grid,
+    .charts-grid {
+        page-break-inside: avoid;
+    }
+
+    .chart-card {
+        page-break-inside: avoid;
+    }
+
+    .table-pagination {
+        display: none;
+    }
+
+    @page {
+        margin: 1.5cm;
+    }
+}
+
+/* ===================================
+   Touch Device Optimizations
+   =================================== */
+
+@media (hover: none) and (pointer: coarse) {
+    /* Increase touch targets */
+    .btn,
+    .filter-btn,
+    .page-btn {
+        min-height: 44px;
+        padding: 12px 16px;
+    }
+
+    .btn-icon-only {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    /* Remove hover effects on touch devices */
+    .glass-card:hover,
+    .kpi-card:hover,
+    .data-table tbody tr:hover {
+        transform: none;
+        box-shadow: var(--shadow-md);
+    }
+
+    /* Larger tap targets for table sorting */
+    .data-table th.sortable {
+        padding: 16px;
+    }
+}
+
+/* ===================================
+   High Contrast Mode
+   =================================== */
+
+@media (prefers-contrast: high) {
+    :root {
+        --border-light: rgba(0, 0, 0, 0.3);
+        --border-medium: rgba(0, 0, 0, 0.5);
+        --text-tertiary: #555;
+    }
+
+    .glass-card {
+        background: rgba(255, 255, 255, 0.95);
+    }
+
+    .status-badge {
+        border: 2px solid currentColor;
+    }
+}
+
+/* ===================================
+   Reduced Motion
+   =================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    .kpi-card:hover,
+    .chart-card:hover,
+    .export-option:hover {
+        transform: none;
+    }
+}
+
+/* ===================================
+   Orientation: Landscape on Mobile
+   =================================== */
+
+@media (max-width: 767px) and (orientation: landscape) {
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .charts-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .chart-card {
+        min-height: 200px;
+    }
+}
+
+/* ---- cagent observability layout (maps to ecommerce patterns) ---- */
+.cagent-wrap { min-height: 100vh; display: flex; flex-direction: column; }
+.cagent-main { flex: 1; }
+.obs-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-lg); align-items: end; }
+.obs-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-lg); }
+.obs-charts-grid { display: grid; grid-template-columns: 2fr 1.2fr 1fr; gap: var(--space-lg); margin-bottom: var(--space-xl); }
+@media (max-width: 1100px) { .obs-charts-grid { grid-template-columns: 1fr; } }
+.obs-chart-body { min-height: 240px; }
+.obs-chart-body canvas { width: 100%; height: 240px; display: block; }
+.mini-bars { display: grid; gap: var(--space-sm); margin-top: var(--space-sm); }
+.mini-row { display: grid; grid-template-columns: 100px 1fr auto; gap: var(--space-sm); align-items: center; font-size: 12px; color: var(--text-secondary); }
+.track { height: 9px; border-radius: var(--radius-full); background: rgba(17,24,39,0.06); overflow: hidden; }
+.fill { height: 100%; border-radius: var(--radius-full); background: linear-gradient(90deg, var(--brand-secondary), var(--brand-primary)); }
+.table-scroll { max-height: 480px; overflow: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table thead th { position: sticky; top: 0; z-index: 2; text-align: left; padding: 12px; background: var(--glass-strong); color: var(--text-secondary); border-bottom: 1px solid var(--border-light); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.data-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border-light); color: var(--text-primary); vertical-align: top; }
+.status-ok { color: var(--success); font-weight: 600; }
+.status-err { color: var(--error); font-weight: 600; }
+.status-warn { color: var(--warning); font-weight: 600; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+.error-cell { max-width: 360px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--error); }
+
+  </style>
+</head>
+<body class="cagent-wrap">
+  <header class="dashboard-header">
+    <div class="header-content">
+      <div class="header-left">
+        <h1 class="dashboard-title">cagent observability</h1>
+        <p class="dashboard-subtitle">Tokens, sessions, and cost — independent + claude_code</p>
+      </div>
+      <div class="header-right">
+        <div class="last-updated">Last export: <span id="lastUpdatedPill">--</span></div>
+        <button type="button" class="btn btn-secondary" id="resetBtn"><span class="btn-icon">↺</span> Reset filters</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="dashboard-main cagent-main">
+    <div class="container">
+      <section class="filter-section glass-card">
+        <div class="filter-header">
+          <h2 class="section-title">Filters</h2>
+        </div>
+        <div class="obs-filter-grid" id="filter-container">
+          <div class="filter-group">
+            <label class="filter-label" for="backendFilter">Backend</label>
+            <select class="filter-select" id="backendFilter">
+              <option value="all">all</option>
+              <option value="independent">independent</option>
+              <option value="claude_code">claude_code</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="statusFilter">Status</label>
+            <select class="filter-select" id="statusFilter">
+              <option value="all">all</option>
+              <option value="ok">ok</option>
+              <option value="error">error</option>
+              <option value="approx">approx tokens</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="sessionFilter">Session</label>
+            <select class="filter-select" id="sessionFilter"><option value="all">all</option></select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="modelFilter">Model</label>
+            <select class="filter-select" id="modelFilter"><option value="all">all</option></select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="searchInput">Search</label>
+            <input type="text" class="filter-input" id="searchInput" placeholder="session, model, backend, error…" />
+          </div>
+        </div>
+      </section>
+
+      <section class="kpi-section">
+        <div class="obs-kpi-grid" id="kpi-container">
+          <article class="kpi-card glass-card">
+            <div class="kpi-header"><span class="kpi-title">Total requests</span></div>
+            <div class="kpi-value" id="kpiRequests">0</div>
+            <p class="kpi-footer"><span class="kpi-change" id="kpiReqRate">--</span></p>
+          </article>
+          <article class="kpi-card glass-card">
+            <div class="kpi-header"><span class="kpi-title">Total cost (USD)</span></div>
+            <div class="kpi-value" id="kpiCost">0.000000</div>
+            <p class="kpi-footer"><span class="kpi-change" id="kpiCostPerReq">--</span></p>
+          </article>
+          <article class="kpi-card glass-card">
+            <div class="kpi-header"><span class="kpi-title">Input tokens</span></div>
+            <div class="kpi-value" id="kpiInTok">0</div>
+            <p class="kpi-footer"><span class="kpi-change" id="kpiInPct">--</span></p>
+          </article>
+          <article class="kpi-card glass-card">
+            <div class="kpi-header"><span class="kpi-title">Output tokens</span></div>
+            <div class="kpi-value" id="kpiOutTok">0</div>
+            <p class="kpi-footer"><span class="kpi-change" id="kpiOutPct">--</span></p>
+          </article>
+          <article class="kpi-card glass-card">
+            <div class="kpi-header"><span class="kpi-title">Success rate</span></div>
+            <div class="kpi-value" id="kpiSuccess">0%</div>
+            <p class="kpi-footer"><span class="kpi-change" id="kpiErrorCount">--</span></p>
+          </article>
+          <article class="kpi-card glass-card">
+            <div class="kpi-header"><span class="kpi-title">Active sessions</span></div>
+            <div class="kpi-value" id="kpiSessions">0</div>
+            <p class="kpi-footer"><span class="kpi-change" id="kpiModels">--</span></p>
+          </article>
+        </div>
+      </section>
+
+      <section class="charts-section">
+        <div class="obs-charts-grid">
+          <div class="chart-card glass-card chart-large">
+            <div class="chart-header"><h3 class="chart-title">Cost & tokens over time</h3></div>
+            <div class="chart-body obs-chart-body"><canvas id="trendChart" width="900" height="240"></canvas></div>
+          </div>
+          <div class="chart-card glass-card">
+            <div class="chart-header"><h3 class="chart-title">Backend share</h3></div>
+            <div class="chart-body obs-chart-body"><canvas id="shareChart" width="420" height="240"></canvas></div>
+          </div>
+          <div class="chart-card glass-card">
+            <div class="chart-header"><h3 class="chart-title">Top cost sessions</h3></div>
+            <div class="chart-body"><div id="sessionBars" class="mini-bars"></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tables-section">
+        <div class="table-card glass-card">
+          <div class="table-header" style="padding:16px 20px;border-bottom:1px solid var(--border-light);">
+            <h3 class="table-title">Event log</h3>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th><th>Backend</th><th>Session</th><th>Model</th>
+                  <th>In</th><th>Out</th><th>Cost</th><th>Status</th><th>Approx</th><th>Error</th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="dashboard-footer">
+    <div class="footer-content">
+      <p class="footer-text" id="footerMeta">—</p>
+    </div>
+  </footer>
+
+  <script>
+    const events = [{"timestamp": "2026-04-23T17:40:35.234925+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 652, "response_chars": 2229, "input_tokens": 163, "output_tokens": 557, "cost_usd": 0.008844, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T17:42:06.055958+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 8, "response_chars": 2740, "input_tokens": 2, "output_tokens": 685, "cost_usd": 0.010281, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T17:43:36.886975+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 575, "response_chars": 2004, "input_tokens": 143, "output_tokens": 501, "cost_usd": 0.007944, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:15:31.253757+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 553, "response_chars": 35818, "input_tokens": 138, "output_tokens": 8954, "cost_usd": 0.134724, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:23:12.464169+00:00", "backend_mode": "independent", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 79, "response_chars": 192, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "approx_tokens": false, "success": false, "error": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CaMAn2iLNPFxP9cHGoqpj'}"}, {"timestamp": "2026-04-23T18:23:41.723412+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 693, "response_chars": 194, "input_tokens": 173, "output_tokens": 48, "cost_usd": 0.001239, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:24:26.932188+00:00", "backend_mode": "independent", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 79, "response_chars": 192, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "approx_tokens": false, "success": false, "error": "Error code: 401 - {'type': 'error', 'error': {'type': 'authentication_error', 'message': 'invalid x-api-key'}, 'request_id': 'req_011CaMAsX5YC2dFYL8iaYcvz'}"}, {"timestamp": "2026-04-23T18:35:26.195648+00:00", "backend_mode": "independent", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 346, "response_chars": 6293, "input_tokens": 99, "output_tokens": 2000, "cost_usd": 0.030297, "approx_tokens": false, "success": true, "error": null}, {"timestamp": "2026-04-23T18:35:45.226006+00:00", "backend_mode": "independent", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 8, "response_chars": 6538, "input_tokens": 2109, "output_tokens": 2000, "cost_usd": 0.036327, "approx_tokens": false, "success": true, "error": null}, {"timestamp": "2026-04-23T18:36:30.894027+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 124, "response_chars": 151, "input_tokens": 31, "output_tokens": 37, "cost_usd": 0.000648, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:37:09.610945+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 25, "response_chars": 1193, "input_tokens": 6, "output_tokens": 298, "cost_usd": 0.004488, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:37:24.248748+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 124, "response_chars": 190, "input_tokens": 31, "output_tokens": 47, "cost_usd": 0.000798, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:38:39.865518+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 124, "response_chars": 121, "input_tokens": 31, "output_tokens": 30, "cost_usd": 0.000543, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:39:09.860609+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 124, "response_chars": 4, "input_tokens": 31, "output_tokens": 1, "cost_usd": 0.000108, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:43:52.723944+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 308, "response_chars": 2892, "input_tokens": 77, "output_tokens": 723, "cost_usd": 0.011076, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:44:03.775791+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 8, "response_chars": 338, "input_tokens": 2, "output_tokens": 84, "cost_usd": 0.001266, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:49:17.500989+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 365, "response_chars": 928, "input_tokens": 91, "output_tokens": 232, "cost_usd": 0.003753, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T18:53:19.477521+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 8, "response_chars": 1373, "input_tokens": 2, "output_tokens": 343, "cost_usd": 0.005151, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T19:40:59.775004+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 467, "response_chars": 3212, "input_tokens": 116, "output_tokens": 803, "cost_usd": 0.012393, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T19:42:11.133113+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 9, "response_chars": 2149, "input_tokens": 2, "output_tokens": 537, "cost_usd": 0.008061, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T21:55:20.348243+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 16, "response_chars": 770, "input_tokens": 4, "output_tokens": 192, "cost_usd": 0.002892, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T22:13:15.177647+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 218, "response_chars": 697, "input_tokens": 54, "output_tokens": 174, "cost_usd": 0.002772, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T22:16:03.018127+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 115, "response_chars": 376, "input_tokens": 28, "output_tokens": 94, "cost_usd": 0.001494, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T22:17:09.372582+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 49, "response_chars": 1784, "input_tokens": 12, "output_tokens": 446, "cost_usd": 0.006726, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T22:38:09.514610+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 68, "response_chars": 2679, "input_tokens": 17, "output_tokens": 669, "cost_usd": 0.010086, "approx_tokens": true, "success": true, "error": null}, {"timestamp": "2026-04-23T23:30:44.585305+00:00", "backend_mode": "claude_code", "session_id": "2226fe68-ddab-472b-95e0-4e3f49441400", "model": "claude-sonnet-4-5-20250929", "prompt_chars": 46, "response_chars": 2285, "input_tokens": 11, "output_tokens": 571, "cost_usd": 0.008598, "approx_tokens": true, "success": true, "error": null}];
+    const totalCost = 0.310509;
+    const rowsEl = document.getElementById("rows");
+    const backendEl = document.getElementById("backendFilter");
+    const statusEl = document.getElementById("statusFilter");
+    const sessionEl = document.getElementById("sessionFilter");
+    const modelEl = document.getElementById("modelFilter");
+    const searchEl = document.getElementById("searchInput");
+    const resetBtn = document.getElementById("resetBtn");
+    const trendCanvas = document.getElementById("trendChart");
+    const shareCanvas = document.getElementById("shareChart");
+    const sessionBarsEl = document.getElementById("sessionBars");
+    const fmtMoney = (v) => Number(v || 0).toFixed(6);
+    const fmtNum = (v) => Number(v || 0).toLocaleString();
+    const tsLabel = (ts) => String(ts || "").replace("T", " ").slice(0, 19);
+    const safe = (v) => String(v == null ? "" : v);
+    function uniqueValues(key) {
+      const set = new Set();
+      events.forEach((e) => { const v = safe(e[key]).trim(); if (v) set.add(v); });
+      return [...set].sort();
+    }
+    function fillSelect(selectEl, values) {
+      const prev = selectEl.value;
+      selectEl.innerHTML = '<option value="all">all</option>' + values.map((v) => `<option value="${v}">${v}</option>`).join("");
+      if (values.includes(prev)) selectEl.value = prev;
+    }
+    fillSelect(sessionEl, uniqueValues("session_id"));
+    fillSelect(modelEl, uniqueValues("model"));
+    function matchesFilter(e) {
+      if (backendEl.value !== "all" && e.backend_mode !== backendEl.value) return false;
+      if (sessionEl.value !== "all" && safe(e.session_id) !== sessionEl.value) return false;
+      if (modelEl.value !== "all" && safe(e.model) !== modelEl.value) return false;
+      if (statusEl.value === "ok" && !e.success) return false;
+      if (statusEl.value === "error" && e.success) return false;
+      if (statusEl.value === "approx" && !e.approx_tokens) return false;
+      const search = searchEl.value.trim().toLowerCase();
+      if (!search) return true;
+      const text = [e.backend_mode, e.session_id, e.model, e.error, e.timestamp].map(safe).join(" ").toLowerCase();
+      return text.includes(search);
+    }
+    function getFiltered() { return events.filter(matchesFilter); }
+    function updateKpis(filtered) {
+      const count = filtered.length;
+      const inTok = filtered.reduce((a, e) => a + Number(e.input_tokens || 0), 0);
+      const outTok = filtered.reduce((a, e) => a + Number(e.output_tokens || 0), 0);
+      const ok = filtered.filter((e) => e.success).length;
+      const err = count - ok;
+      const cost = filtered.reduce((a, e) => a + Number(e.cost_usd || 0), 0);
+      const sessions = new Set(filtered.map((e) => safe(e.session_id)).filter(Boolean)).size;
+      const models = new Set(filtered.map((e) => safe(e.model)).filter(Boolean)).size;
+      const tokenTotal = inTok + outTok;
+      document.getElementById("kpiRequests").textContent = fmtNum(count);
+      document.getElementById("kpiCost").textContent = fmtMoney(cost);
+      document.getElementById("kpiInTok").textContent = fmtNum(inTok);
+      document.getElementById("kpiOutTok").textContent = fmtNum(outTok);
+      document.getElementById("kpiSuccess").textContent = count ? ((ok / count) * 100).toFixed(1) + "%" : "0%";
+      document.getElementById("kpiSessions").textContent = fmtNum(sessions);
+      document.getElementById("kpiReqRate").textContent = count ? "Filtered view" : "No rows";
+      document.getElementById("kpiCostPerReq").textContent = count ? ("avg $" + (cost / count).toFixed(6) + " / req") : "—";
+      document.getElementById("kpiInPct").textContent = tokenTotal ? ((inTok / tokenTotal) * 100).toFixed(1) + "% of tokens" : "—";
+      document.getElementById("kpiOutPct").textContent = tokenTotal ? ((outTok / tokenTotal) * 100).toFixed(1) + "% of tokens" : "—";
+      document.getElementById("kpiErrorCount").textContent = fmtNum(err) + " errors";
+      document.getElementById("kpiModels").textContent = fmtNum(models) + " models";
+    }
+    function drawTrendChart(filtered) {
+      const ctx = trendCanvas.getContext("2d");
+      const w = trendCanvas.width, h = trendCanvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
+      if (!filtered.length) { ctx.fillStyle = "#667085"; ctx.font = "13px Inter,sans-serif"; ctx.fillText("No data for filters", 16, 28); return; }
+      const sorted = [...filtered].sort((a, b) => safe(a.timestamp).localeCompare(safe(b.timestamp)));
+      const costs = sorted.map((e) => Number(e.cost_usd || 0));
+      const toks = sorted.map((e) => Number(e.input_tokens || 0) + Number(e.output_tokens || 0));
+      const maxCost = Math.max(...costs, 1e-9);
+      const maxTok = Math.max(...toks, 1);
+      const pad = 32, cw = w - pad * 2, ch = h - pad * 2;
+      ctx.strokeStyle = "#e4e7ec"; ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i += 1) { const y = pad + (ch * i) / 4; ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke(); }
+      function line(values, max, color) {
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+        values.forEach((val, idx) => { const x = pad + (idx / Math.max(1, values.length - 1)) * cw; const y = h - pad - (val / max) * ch; if (idx === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+        ctx.stroke();
+      }
+      line(costs, maxCost, "#5b6cff");
+      line(toks, maxTok, "#12b76a");
+    }
+    function drawShareChart(filtered) {
+      const ctx = shareCanvas.getContext("2d");
+      const w = shareCanvas.width, h = shareCanvas.height;
+      ctx.clearRect(0, 0, w, h); ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);
+      const ind = filtered.filter((e) => e.backend_mode === "independent").length;
+      const cc = filtered.filter((e) => e.backend_mode === "claude_code").length;
+      const total = Math.max(1, ind + cc);
+      const values = [{ name: "claude_code", count: cc, color: "#5b6cff" }, { name: "independent", count: ind, color: "#12b76a" }];
+      const cx = 110, cy = h / 2, r = 74, inner = 45;
+      let start = -Math.PI / 2;
+      values.forEach((v) => { const sweep = (v.count / total) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, start, start + sweep); ctx.closePath(); ctx.fillStyle = v.color; ctx.fill(); start += sweep; });
+      ctx.beginPath(); ctx.arc(cx, cy, inner, 0, Math.PI * 2); ctx.fillStyle = "#ffffff"; ctx.fill();
+      ctx.fillStyle = "#1d2939"; ctx.font = "bold 18px Inter,sans-serif"; ctx.fillText(String(ind + cc), cx - 12, cy + 5);
+      ctx.font = "12px Inter,sans-serif"; ctx.fillStyle = "#667085"; ctx.fillText("events", cx - 17, cy + 22);
+      let y = 72;
+      values.forEach((v) => { ctx.fillStyle = v.color; ctx.fillRect(215, y - 9, 11, 11); ctx.fillStyle = "#344054"; ctx.font = "12px Inter,sans-serif"; ctx.fillText(v.name + " (" + v.count + ")", 232, y); y += 24; });
+    }
+    function renderSessionBars(filtered) {
+      const bySession = new Map();
+      filtered.forEach((e) => { const key = safe(e.session_id) || "unknown"; bySession.set(key, (bySession.get(key) || 0) + Number(e.cost_usd || 0)); });
+      const top = [...bySession.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+      const max = top.length ? top[0][1] : 1;
+      sessionBarsEl.innerHTML = top.map(([name, cost]) => `<div class="mini-row"><div class="mono">${name.slice(0, 14)}</div><div class="track"><div class="fill" style="width:${(cost / max) * 100}%"></div></div><div>${fmtMoney(cost)}</div></div>`).join("") || '<p class="dashboard-subtitle">No session cost for this filter.</p>';
+    }
+    function renderRows(filtered) {
+      const rows = [...filtered].sort((a, b) => safe(b.timestamp).localeCompare(safe(a.timestamp)));
+      rowsEl.innerHTML = rows.map((e) => `
+        <tr>
+          <td class="mono">${tsLabel(e.timestamp)}</td><td>${safe(e.backend_mode)}</td><td class="mono">${safe(e.session_id) || "-"}</td>
+          <td>${safe(e.model)}</td><td>${fmtNum(e.input_tokens)}</td><td>${fmtNum(e.output_tokens)}</td>
+          <td class="mono">${fmtMoney(e.cost_usd)}</td><td class="${e.success ? "status-ok" : "status-err"}">${e.success ? "ok" : "error"}</td>
+          <td>${e.approx_tokens ? '<span class="status-warn">yes</span>' : "no"}</td><td class="error-cell" title="${safe(e.error)}">${safe(e.error) || "-"}</td>
+        </tr>`).join("");
+    }
+    function renderAll() {
+      const filtered = getFiltered();
+      updateKpis(filtered);
+      drawTrendChart(filtered);
+      drawShareChart(filtered);
+      renderSessionBars(filtered);
+      renderRows(filtered);
+      const latest = filtered.length ? [...filtered].sort((a, b) => safe(b.timestamp).localeCompare(safe(a.timestamp)))[0].timestamp : null;
+      document.getElementById("lastUpdatedPill").textContent = latest ? tsLabel(latest) + " UTC" : "--";
+      document.getElementById("footerMeta").textContent = "Stored events: " + fmtNum(events.length) + " · Global cost $" + fmtMoney(totalCost) + " · Shown: " + fmtNum(filtered.length);
+    }
+    [backendEl, statusEl, sessionEl, modelEl].forEach((el) => el.addEventListener("change", renderAll));
+    searchEl.addEventListener("input", renderAll);
+    resetBtn.addEventListener("click", () => { backendEl.value = "all"; statusEl.value = "all"; sessionEl.value = "all"; modelEl.value = "all"; searchEl.value = ""; renderAll(); });
+    renderAll();
+  </script>
+</body>
+</html>

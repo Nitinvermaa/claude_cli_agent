@@ -1,0 +1,14 @@
+---
+description: require version bump when cagent code changes
+alwaysApply: true
+---
+
+# Version Bump Policy
+
+When making code changes in this repository, always bump the cagent version before finishing.
+
+- Update `pyproject.toml` `[project].version`
+- Update `src/claude_cli_agent/__init__.py` `__version__`
+- If docs mention the expected current version, update those references too
+
+Use a patch bump by default (`0.2.2` -> `0.2.3`) unless the user explicitly asks for minor/major semantics.
