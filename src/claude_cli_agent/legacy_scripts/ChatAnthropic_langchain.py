@@ -17,7 +17,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage
 
 _ROOT = Path(__file__).resolve().parent
-_DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
 def _load_config() -> tuple[str, str]:

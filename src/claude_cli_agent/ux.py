@@ -19,28 +19,32 @@ from .console_theme import use_dark_ink
 _T = TypeVar("_T")
 
 
-# Terminal-friendly ASCII dino frames (loop while the model thinks).
+# Terminal-friendly ASCII dino frames (eyes on the head line, not the body).
 DINO_THINK_FRAMES: tuple[str, ...] = (
-    "           __\n"
-    "          / _)\n"
-    "   .-^^^-/ /\n"
-    "__/  o o  /\n"
-    "<__.|_|-|_|   stomp…",
-    "           __\n"
-    "          / _)\n"
-    "   .-^^^-/ /\n"
-    "__/  - -  /\n"
-    "<__.|_|-|_|   think…",
-    "           __\n"
-    "          / _)\n"
-    "   .-^^^-/ /\n"
-    "__/  ^ ^  /\n"
-    "<__.|_|-|_|   chomp…",
-    "           __\n"
-    "          / _)\n"
-    "   .-^^^-/ /\n"
-    "__/  o o  /\n"
-    "<__.|_|-|_|   done…",
+    "       ( o o )\n"
+    "        \\___\n"
+    "    .-'     '-.\n"
+    "   /           \\\n"
+    "  |_____________|\n"
+    "      stomp…",
+    "       ( - - )\n"
+    "        \\___\n"
+    "    .-'     '-.\n"
+    "   /           \\\n"
+    "  |_____________|\n"
+    "      think…",
+    "       ( ~ ~ )\n"
+    "        \\___\n"
+    "    .-'     '-.\n"
+    "   /           \\\n"
+    "  |_____________|\n"
+    "      chomp…",
+    "       ( o o )\n"
+    "        \\___\n"
+    "    .-'     '-.\n"
+    "   /           \\\n"
+    "  |_____________|\n"
+    "      done…",
 )
 
 

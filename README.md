@@ -6,8 +6,8 @@
 
 `cagent` supports two backend modes so users can choose:
 
+- `independent` (**default**): uses direct Anthropic API (no `claude` binary required for chat/vision workflow).
 - `claude_code`: uses `claude-agent-sdk` transport with local `claude` CLI.
-- `independent`: uses direct Anthropic API (no `claude` binary required for chat/vision workflow).
 
 Select backend at run time using `--backend`, or set it via `cagent config --backend ...`.
 
@@ -110,12 +110,22 @@ pipx uninstall claude-cli-agent
 pipx install --spec "/Users/nitinverma/AI_Project/claude_cli_agent[graphify]" claude-cli-agent
 ```
 
+## Setup (API key, install, first run)
+
+See **[SETUP.md](SETUP.md)** for:
+
+- Installing with **pipx** or `pip install -e .`
+- Setting **`ANTHROPIC_API_KEY`** (`.env`, shell export, `cagent config`, or `/apikey`)
+- Choosing **independent** vs **claude_code** backend
+- Write permissions and optional env vars
+
 ## First Run
 
 ```bash
-cagent --backend claude_code
-# or
+cagent
+# or explicitly:
 cagent --backend independent
+cagent --backend claude_code
 ```
 
 On first run, cagent asks for:
@@ -154,10 +164,10 @@ export CAGENT_FORCE_DARK_UI=1
 ### Start agent
 
 ```bash
-cagent --backend claude_code --mode ask
+cagent
+cagent --mode ask
+cagent --backend claude_code
 cagent --backend claude_code --mode agent
-cagent --backend independent --mode ask
-cagent --backend independent --mode agent
 ```
 
 ### New project / scaffold app
@@ -245,8 +255,8 @@ Official reference: [Claude Code overview](https://docs.anthropic.com/en/docs/cl
 - `/theme show|set <prompt|accent> <color|#RRGGBB>`
 
 Backend notes:
-- `/mcp ...` commands are available in `claude_code` backend.
-- `independent` backend still supports policy gates, annotations, scaffolding, graphify, and vision flow.
+- `independent` backend uses the Anthropic Messages API with host-side `read_file`, `write_file`, and `delete_path` under `--cwd` (mutations disabled in **ask** mode; **plan/agent/debug** use tools when full access is on — **on by default** in config).
+- `/mcp ...` commands are available in `claude_code` backend only.
 
 ## Approval Workflow
 
@@ -261,7 +271,10 @@ Each approved stage requires re-entering a signed short-lived token.
 
 ## Annotation Syntax
 
-- `@file:src/app/main.py`
+Type **`@`** in the prompt, then **Tab** for paths from the current working directory (Cursor-style). You can still use explicit prefixes.
+
+- `@HawkEyeUI/` or `@dir:HawkEyeUI/` — folder
+- `@README.md` or `@file:README.md` — file
 - `@file:src/app/main.py#L10-80`
 - `@dir:src/components/`
 - `@glob:src/**/*.ts`
@@ -285,7 +298,7 @@ Example:
 - `claude_code` backend:
   - requires local Claude Code CLI (`claude`) on PATH
 - `independent` backend:
-  - no local `claude` binary required for chat/vision flow
+  - direct Anthropic API (no local `claude` binary required); **read/write workspace files** via built-in tools under `--cwd` when policy allows writes
 
 ## Troubleshooting
 
@@ -304,6 +317,28 @@ Example:
     cagent config --backend claude_code
     ```
 
+- Independent backend: `400` + `tool_use` / `tool_result` (invalid request)
+  - not an API key auth failure (those are usually **401**); upgrade to **0.2.23+**; if it persists, start a fresh chat (`/chat new …`) or a new session so the in-memory transcript is not stuck mid-tool.
+
+- Independent backend: `Stopped after … tool rounds` / huge token counts
+  - large “read everything” tasks hit the tool-step cap or context size; raise **`CAGENT_INDEPENDENT_MAX_TOOL_ROUNDS`** (e.g. `256`, max **512**) and optionally **`CAGENT_INDEPENDENT_MAX_TOKENS`** (e.g. `32768`, max **65536**), or narrow the analysis scope, or use **`--backend claude_code`** for big repo sweeps.
+
+- Claude Code: “you haven't granted it yet” on Write after cagent approval
+  - **`.claude/` is a protected path** — `acceptEdits` still blocks creating it via Claude tools. cagent **0.2.28+** writes `.claude/settings.json` **host-side** and uses SDK **`permission_mode=bypassPermissions`** when full access is on. Upgrade, restart `cagent`, run `/approve session`, `/mode agent`. You should see: `Claude Code permissions ready: .../settings.json`.
+  - In VS Code, set mode to **Bypass permissions** (or enable “Allow dangerously skip permissions” in the Claude Code extension), not only “Edit automatically”.
+  - One-time manual fix in the project (if needed before upgrade):
+    ```bash
+    mkdir -p .claude && cat > .claude/settings.json <<'EOF'
+    { "permissions": { "defaultMode": "bypassPermissions", "allow": ["Read(**)", "Write(**)", "Edit(**)", "Bash(**)"] } }
+    EOF
+    ```
+
+- Responses feel slow before the model answers
+  - each prompt may run **`graphify query`** first (subprocess); set **`graphify_query_first": false`** in `~/.config/cagent/config.json` or re-run `cagent config` and disable “graphify query-first”, or cap wait with **`CAGENT_GRAPHIFY_QUERY_TIMEOUT=6`** in the shell / `.env`.
+  - after file writes, **`graphify update`** can run up to **`CAGENT_GRAPHIFY_UPDATE_TIMEOUT`** seconds; set **`graphify_auto_update": false`** to skip post-write graph rebuilds during heavy sessions.
+  - **approval workflow + signed tokens** add human time; relax those in config for local-only work.
+  - **independent** + huge repo = many tool rounds and a very long transcript; narrow scope, or use **`--backend claude_code`**.
+
 - Windows terminal notes
   - use `py` instead of `python3` where needed
   - once PATH is set, commands work in CMD/PowerShell/IDE terminal
@@ -311,7 +346,7 @@ Example:
 - Welcome still shows `\help` or no boot animation
   - your shell is probably using an **old installed** `cagent`, not the repo you edited
   - run `which -a cagent` — another binary named `cagent` (for example under `/usr/local/bin`) can shadow this project
-  - check: `cagent --version` or `cagent version` in the **shell** (not at the `you:` REPL prompt); expect `0.2.16` or newer after upgrading
+  - check: `cagent --version` or `cagent version` in the **shell** (not at the `you:` REPL prompt); expect `0.2.28` or newer after upgrading
   - refresh install: `pipx install -e /path/to/claude_cli_agent --force` or from the repo: `pip install -e .`
   - optional full-screen figlet boot: `CAGENT_ASCIIMATICS_BOOT=1 cagent`
 

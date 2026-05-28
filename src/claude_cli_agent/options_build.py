@@ -52,9 +52,9 @@ def build_options(
         permission_mode = "default"
         disallowed_tools = list(READ_ONLY_DISALLOWED_TOOLS)
     elif mode == "agent":
-        # In some Claude environments, dontAsk can hard-deny all tool execution.
-        # Use default mode with no disallowed tools for practical full-access runs.
-        permission_mode = "default"
+        # bypassPermissions: required for docs + .claude/ writes after user approval (acceptEdits
+        # still prompts on protected paths like .claude and multi-step Bash).
+        permission_mode = "bypassPermissions"
         disallowed_tools = []
     elif mode == "plan":
         permission_mode = "plan"
@@ -64,7 +64,8 @@ def build_options(
     elif mode == "debug":
         include_partial_messages = True
         extra_args = {"debug-to-stderr": None}
-        permission_mode = "default"
+        permission_mode = "bypassPermissions"
+        disallowed_tools = []
 
     confirmation_policy = (
         "Ask user confirmation before major implementation, file mutations, git commit, or push."
@@ -80,6 +81,21 @@ def build_options(
         "explicitly asked to proceed; implement end-to-end and then report what changed. "
         f"{confirmation_policy}"
     )
+    if "Bash" in disallowed_tools:
+        system_append += (
+            " This session has a read-only tool policy: Bash, Write, Edit, MultiEdit, NotebookEdit, "
+            "and Task are disabled—do not invoke them (the host will return tool_use_error). "
+            "Use Read, Grep, Glob, and other allowed tools only. If the user needs shell or edits, "
+            "tell them to enable full access (config full_access_project, or /approve task|session) "
+            "and reconnect."
+        )
+    elif full_access_enabled and mode in {"agent", "debug"}:
+        system_append += (
+            " Full workspace access is enabled (bypassPermissions): create, update, and delete project "
+            "files with Write, Edit, and Bash. Do not try to create .claude/settings.json — cagent "
+            "already wrote it. Write report files under docs/ directly. Execute without asking "
+            "the user to paste code."
+        )
 
     options = ClaudeAgentOptions(
         tools={"type": "preset", "preset": "claude_code"},

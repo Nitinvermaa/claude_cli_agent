@@ -57,7 +57,7 @@ def root(
         ),
     ] = False,
     mode: Annotated[str, typer.Option("--mode", help="Runtime mode")] = "agent",
-    backend: Annotated[str, typer.Option("--backend", help="Backend: claude_code or independent")] = "claude_code",
+    backend: Annotated[str | None, typer.Option("--backend", help="Backend: claude_code or independent")] = None,
     cwd: Annotated[Path, typer.Option("--cwd", help="Working directory")] = Path.cwd(),
     api_key: Annotated[str | None, typer.Option("--api-key", help="Override API key")] = None,
 ) -> None:
@@ -72,7 +72,7 @@ def root(
     cfg = load_or_init_config(
         console,
         api_key_override=api_key,
-        backend_override=_parse_backend(backend),
+        backend_override=_parse_backend(backend) if backend is not None else None,
         cwd=cwd.resolve(),
     )
     runtime = Runtime(config=cfg, cwd=cwd.resolve(), mode=_parse_mode(mode), console=console)
@@ -84,13 +84,17 @@ def new_project(
     name: Annotated[str, typer.Argument(help="Project folder name")],
     directory: Annotated[Path, typer.Option("--directory", help="Parent directory")] = Path.cwd(),
     mode: Annotated[str, typer.Option("--mode")] = "agent",
-    backend: Annotated[str, typer.Option("--backend")] = "claude_code",
+    backend: Annotated[str | None, typer.Option("--backend")] = None,
 ) -> None:
     """Create a new project directory and start cagent there."""
     target = (directory / name).resolve()
     target.mkdir(parents=True, exist_ok=True)
     (target / "README.md").write_text(f"# {name}\n", encoding="utf-8")
-    cfg = load_or_init_config(console, backend_override=_parse_backend(backend), cwd=target)
+    cfg = load_or_init_config(
+        console,
+        backend_override=_parse_backend(backend) if backend is not None else None,
+        cwd=target,
+    )
     runtime = Runtime(config=cfg, cwd=target, mode=_parse_mode(mode), console=console)
     asyncio.run(runtime.start())
 

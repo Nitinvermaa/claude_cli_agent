@@ -44,22 +44,30 @@ def _safe_name(name: str) -> str:
 
 def detect_scaffold_request(prompt: str) -> ScaffoldRequest | None:
     text = prompt.lower()
-    if "app" not in text and "project" not in text:
+    # Analysis / report prompts should not spawn a new app scaffold.
+    if re.search(
+        r"\b(analyse|analyze|analysis|report|architect|architecture|audit|review|html)\b",
+        text,
+    ):
         return None
-    if not any(token in text for token in ("build", "create", "make", "generate", "scaffold")):
+    if not re.search(r"\b(app|application|project)\b", text):
+        return None
+    if not re.search(r"\b(build|create|make|generate|scaffold)\b", text):
         return None
 
     language: Language | None = None
-    language_map: dict[Language, tuple[str, ...]] = {
-        "python": ("python", "fastapi", "flask", "django"),
-        "javascript": ("javascript", "js", "node"),
-        "typescript": ("typescript", "ts"),
-        "go": ("golang", "go"),
-        "rust": ("rust",),
-        "java": ("java", "spring"),
+    # Avoid false positives: ".json" in globs must not match language "js".
+    lang_text = re.sub(r"\.json\b", " ", text)
+    language_patterns: dict[Language, re.Pattern[str]] = {
+        "python": re.compile(r"\b(python|fastapi|flask|django)\b"),
+        "javascript": re.compile(r"\b(javascript|node)\b|\bjs\b"),
+        "typescript": re.compile(r"\b(typescript)\b|\bts\b"),
+        "go": re.compile(r"\b(golang|go)\b"),
+        "rust": re.compile(r"\b(rust)\b"),
+        "java": re.compile(r"\b(java|spring|springboot|spring-boot)\b"),
     }
-    for lang, tokens in language_map.items():
-        if any(tok in text for tok in tokens):
+    for lang, pattern in language_patterns.items():
+        if pattern.search(lang_text):
             language = lang
             break
     if language is None:

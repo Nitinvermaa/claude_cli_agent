@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 from rich.console import Console
@@ -32,6 +33,11 @@ class GraphifyManager:
 
         self.console.print("[dim]Updating graphify context (AST-only) ...[/dim]")
         try:
+            u_timeout = float((os.environ.get("CAGENT_GRAPHIFY_UPDATE_TIMEOUT") or "45").strip())
+        except ValueError:
+            u_timeout = 45.0
+        u_timeout = max(5.0, min(u_timeout, 120.0))
+        try:
             proc = await asyncio.create_subprocess_exec(
                 self.graphify_cmd,
                 "update",
@@ -44,7 +50,7 @@ class GraphifyManager:
             self._handle_missing_binary()
             return
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=45)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=u_timeout)
         except asyncio.TimeoutError:
             proc.kill()
             self.console.print("[yellow]graphify update timed out; continuing session.[/yellow]")
@@ -61,6 +67,11 @@ class GraphifyManager:
         if not self.enabled:
             return None
         try:
+            q_timeout = float((os.environ.get("CAGENT_GRAPHIFY_QUERY_TIMEOUT") or "12").strip())
+        except ValueError:
+            q_timeout = 12.0
+        q_timeout = max(2.0, min(q_timeout, 45.0))
+        try:
             proc = await asyncio.create_subprocess_exec(
                 self.graphify_cmd,
                 "query",
@@ -75,7 +86,7 @@ class GraphifyManager:
             self._handle_missing_binary()
             return None
         try:
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=20)
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=q_timeout)
         except asyncio.TimeoutError:
             proc.kill()
             return None

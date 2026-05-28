@@ -21,7 +21,7 @@ COMMAND_META: dict[str, str] = {
     "/vision": "Ask about an image path (vision-capable models).",
     "/approve": "Show or grant session/task full-access overrides.",
     "/approvals": "Show recent approval audit events.",
-    "/annotations": "Help for @file / @dir / @glob reference syntax.",
+    "/annotations": "Help for @ references; type @ then Tab for file/dir paths from CWD.",
     "/pick": "Interactive fuzzy picker for annotation targets.",
     "/authcheck": "Probe auth / backend connectivity.",
     "/usage": "Print usage table and refresh HTML dashboard path.",

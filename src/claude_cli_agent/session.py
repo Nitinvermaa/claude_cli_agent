@@ -26,7 +26,9 @@ from .approval_token import ApprovalTokenManager
 from .config import AgentConfig, load_or_init_config, persist_config
 from .console_theme import use_dark_ink
 from .graphify_integration import GraphifyManager
+from .independent_agent import run_independent_tool_loop
 from .options_build import AgentMode, build_options
+from .project_permissions import sync_claude_project_permissions
 from .policy import needs_change_confirmation, needs_commit_confirmation, needs_push_confirmation
 from .render import (
     render_btw_reply,
@@ -48,6 +50,7 @@ except Exception:  # pragma: no cover - optional dependency fallback
     AutoSuggestFromHistory = None  # type: ignore[assignment]
 
 from .host_commands import COMMAND_META, HOST_COMMANDS, HostCommandCompleter
+from .prompt_completer import CagentPromptCompleter
 
 
 @dataclass
@@ -87,7 +90,7 @@ class Runtime:
             session_aliases=persisted.session_aliases,
         )
         self.client: ClaudeSDKClient | None = None
-        self.backend_mode = config.backend_mode if config.backend_mode in {"claude_code", "independent"} else "claude_code"
+        self.backend_mode = config.backend_mode if config.backend_mode in {"claude_code", "independent"} else "independent"
         self.independent_client: anthropic.Anthropic | None = None
         self.independent_histories: dict[str, list[dict]] = {}
         self.approval_audit = ApprovalAuditStore(Path(config.approval_audit_path).expanduser())
@@ -133,6 +136,8 @@ class Runtime:
         textual_hint(self.console)
         if os.environ.get("CAGENT_ASCIIMATICS_BOOT", "").lower() in {"1", "true", "yes"}:
             asciimatics_splash(self.console)
+        if self.backend_mode == "claude_code" and self._effective_full_access():
+            sync_claude_project_permissions(self.console, self.cwd, full_access=True)
         await self._connect()
         render_welcome(
             self.console,
@@ -141,6 +146,12 @@ class Runtime:
             prompt_color=self.config.prompt_color,
             accent_color=self.config.accent_color,
         )
+        if self.backend_mode == "claude_code" and not self._effective_full_access():
+            self.console.print(
+                "[yellow]Tools Bash / Write / Edit / Task are disabled (read-only policy). "
+                "For a coding agent run: /approve task, /approve session, or set "
+                "full_access_project in ~/.config/cagent/config.json — then the session reconnects.[/yellow]"
+            )
         if use_dark_ink():
             self.console.print(
                 f"[#475569]Backend:[/] [bold #0f172a]{self.backend_mode}[/bold #0f172a]"
@@ -181,7 +192,7 @@ class Runtime:
         if PromptSession is None or AutoSuggestFromHistory is None:
             return None
         try:
-            completer = HostCommandCompleter(COMMAND_META)
+            completer = CagentPromptCompleter(cwd=self.cwd)
         except Exception:
             return None
         return PromptSession(completer=completer, auto_suggest=AutoSuggestFromHistory())
@@ -217,13 +228,16 @@ class Runtime:
                     resume_session_id = self.state.active_session_id
                 except ValueError:
                     resume_session_id = None
+            full_access = self._effective_full_access()
+            if full_access:
+                sync_claude_project_permissions(self.console, self.cwd, full_access=True)
             options = build_options(
                 config=self.config,
                 cwd=self.cwd,
                 mode=self.state.active_mode,
                 resume_session_id=resume_session_id,
                 agents=self.state.agents,
-                full_access_override=self._effective_full_access(),
+                full_access_override=full_access,
             )
             self.client = ClaudeSDKClient(options=options)
             try:
@@ -256,6 +270,11 @@ class Runtime:
         if not self.state.active_session_id:
             self.state.active_session_id = "local-1"
         self.independent_histories.setdefault(self.state.active_session_id, [])
+
+    def _independent_workspace_write_allowed(self) -> bool:
+        if self.state.active_mode == "ask":
+            return False
+        return self._effective_full_access()
 
     async def _prompt_line(self) -> str:
         if self._prompt_session is None:
@@ -350,7 +369,11 @@ class Runtime:
         if self.state.active_mode == "agent" and self.config.auto_scaffold_on_app_request:
             # If user already specified explicit filesystem paths, avoid creating
             # generic scaffold folders like generated-app and let the model act directly.
-            has_explicit_path = bool(re.search(r"(^|\s)/(?:[\w.-]+/)+[\w.-]+", prompt))
+            has_explicit_path = bool(
+                re.search(r"(^|\s)/(?:[\w.-]+/)+[\w.-]+", prompt)
+                or re.search(r"@(dir:|file:|glob:)\S+", prompt)
+                or re.search(r"@[\w][\w./-]*/", prompt)
+            )
             req = detect_scaffold_request(prompt)
             if req and not has_explicit_path:
                 if not self.config.enable_web_ui_plugin:
@@ -415,7 +438,9 @@ class Runtime:
                     success=True,
                 )
             else:
-                text, input_tokens, output_tokens, success, error = await self._query_independent(prompt_to_send)
+                text, input_tokens, output_tokens, success, error, indep_changed = await self._query_independent(
+                    prompt_to_send
+                )
                 self.console.print(Panel(text, title="Assistant (independent backend)", border_style="cyan"))
                 self.usage_tracker.append(
                     backend_mode=self.backend_mode,
@@ -429,50 +454,68 @@ class Runtime:
                     success=success,
                     error=error,
                 )
+                changed_files = changed_files or indep_changed
         self.usage_tracker.render_terminal_table(self.console, limit=5)
         await self.graphify.maybe_update(self.cwd, changed=changed_files)
         if task_override_activated:
             self.state.next_task_full_access = False
             await self._connect()
 
-    async def _query_independent(self, prompt: str) -> tuple[str, int, int, bool, str | None]:
+    async def _query_independent(
+        self, prompt: str
+    ) -> tuple[str, int, int, bool, str | None, bool]:
         assert self.independent_client is not None
         session_id = self.state.active_session_id or "local-1"
         history = self.independent_histories.setdefault(session_id, [])
         history.append({"role": "user", "content": prompt})
 
-        def _call() -> anthropic.types.Message:
-            return self.independent_client.messages.create(
+        allow_write = self._independent_workspace_write_allowed()
+        system_lines = [
+            "You are cagent, a production coding assistant using the Anthropic API (independent backend).",
+            f"Workspace root on disk: {self.cwd.resolve()}",
+            "You always have the read_file tool to inspect project files.",
+            "On large codebases: sample key modules first (entry points, configs, tests); avoid dumping "
+            "every source file into context before writing the report.",
+        ]
+        if allow_write:
+            system_lines.append(
+                "You have write_file (create/overwrite) and delete_path (remove files or directories; "
+                "use recursive=true only when intentionally deleting a non-empty directory tree). "
+                "Use these tools for real edits under the workspace root—do not ask the user to paste into an editor "
+                "unless they prefer that."
+            )
+        else:
+            system_lines.append(
+                "Mutating tools are disabled in ask mode (read-only). Use read_file only; switch to "
+                "/mode agent, plan, or debug for writes, or use the claude_code backend."
+            )
+        system = "\n".join(system_lines)
+
+        def _run() -> tuple[str, int, int, str | None, bool]:
+            return run_independent_tool_loop(
+                self.independent_client,
                 model=self.config.model,
-                max_tokens=2000,
+                system=system,
                 messages=history,
+                cwd=self.cwd,
+                allow_write=allow_write,
             )
 
         try:
-            response = await asyncio.to_thread(_call)
+            text, input_tokens, output_tokens, err, changed_files = await asyncio.to_thread(_run)
         except Exception as exc:
-            message = f"Independent backend request failed: {exc}"
-            history.append({"role": "assistant", "content": message})
+            err = str(exc)
+            text = f"Independent backend request failed: {err}"
+            history.append({"role": "assistant", "content": text})
             self._persist_state()
-            return message, 0, 0, False, str(exc)
-        text_parts: list[str] = []
-        input_tokens = 0
-        output_tokens = 0
-        usage = getattr(response, "usage", None)
-        if usage is not None:
-            input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-            output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-        for block in response.content:
-            maybe_text = getattr(block, "text", None)
-            if maybe_text:
-                text_parts.append(maybe_text)
-        answer = "\n".join(text_parts).strip() or "(no text response)"
-        history.append({"role": "assistant", "content": answer})
+            return text, 0, 0, False, err, False
+
+        success = err is None
         if session_id not in self.state.known_session_ids:
             self.state.known_session_ids.append(session_id)
         self.state.active_session_id = session_id
         self._persist_state()
-        return answer, input_tokens, output_tokens, True, None
+        return text, input_tokens, output_tokens, success, err, changed_files
 
     async def _query_independent_vision(self, *, image_path: str, question: str) -> str:
         assert self.independent_client is not None
@@ -646,7 +689,7 @@ class Runtime:
         if not key:
             self.console.print("[red]No API key configured.[/red] [dim]Use /apikey set …[/dim]")
             return
-        model = (self.config.model or "").strip() or "claude-sonnet-4-20250514"
+        model = (self.config.model or "").strip() or "claude-sonnet-4-6"
 
         def _call() -> str:
             client = anthropic.Anthropic(api_key=key)
@@ -1279,14 +1322,18 @@ class Runtime:
                 return
             self.state.next_task_full_access = True
             await self._connect()
-            self.console.print("[green]Granted full permission for next task.[/green]")
+            self.console.print(
+                "[green]Granted full permission for next task (bypassPermissions + .claude/settings.json).[/green]"
+            )
             return
         if sub == "session":
             if not await self._require_signed_token("manual_session_grant"):
                 return
             self.state.session_full_access = True
             await self._connect()
-            self.console.print("[green]Granted full permission for this session.[/green]")
+            self.console.print(
+                "[green]Granted full permission for this session (bypassPermissions + .claude/settings.json).[/green]"
+            )
             return
         if sub == "revoke":
             self.state.session_full_access = False
@@ -1317,12 +1364,10 @@ class Runtime:
 
     def _show_annotation_help(self) -> None:
         self.console.print("[bold]Annotation reference syntax[/bold]")
-        self.console.print("- @file:src/app/main.py")
-        self.console.print("- @file:src/app/main.py#L10-80")
-        self.console.print("- @dir:src/components/")
-        self.console.print("- @glob:src/**/*.ts")
+        self.console.print("[dim]Type @ then Tab for paths from the current working directory.[/dim]")
+        self.console.print("- @HawkEyeUI/  or  @dir:src/components/")
+        self.console.print("- @README.md  or  @file:src/app/main.py#L10-80")
         self.console.print("- @glob:src/**/*.ts!**/*.test.ts")
-        self.console.print("- @relative/path/to/file.py")
         self.console.print()
         self.console.print("[bold]Prompt patterns for file changes[/bold]")
         self.console.print(
@@ -1433,6 +1478,9 @@ class Runtime:
         if self.backend_mode == "independent":
             self.console.print(
                 "[green]Independent backend uses direct Anthropic API from cagent config key.[/green]"
+            )
+            self.console.print(
+                "[dim]Workspace tools: read_file; write_file and delete_path when not in ask mode and full access is on (default).[/dim]"
             )
             self.console.print(
                 "[dim]Verification: run a small prompt, then confirm usage in the intended API account dashboard.[/dim]"

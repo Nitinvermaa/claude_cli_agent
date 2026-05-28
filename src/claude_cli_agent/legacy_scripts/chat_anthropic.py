@@ -7,7 +7,7 @@ import anthropic
 from dotenv import load_dotenv
 
 _ROOT = Path(__file__).resolve().parent
-_DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
+_DEFAULT_MODEL = "claude-sonnet-4-6"
 
 
 def _api_key() -> str:

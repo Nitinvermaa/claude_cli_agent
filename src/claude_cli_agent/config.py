@@ -13,7 +13,7 @@ from rich.prompt import Confirm, Prompt
 
 APP_DIR = Path.home() / ".config" / "cagent"
 CONFIG_PATH = APP_DIR / "config.json"
-DEFAULT_MODEL = "claude-sonnet-4-5"
+DEFAULT_MODEL = "claude-sonnet-4-6"
 KEYRING_SERVICE = "cagent"
 KEYRING_USERNAME = "default"
 
@@ -23,12 +23,12 @@ class AgentConfig:
     """Runtime configuration for the CLI agent."""
 
     api_key: str
-    backend_mode: str = "claude_code"
+    backend_mode: str = "independent"
     model: str = DEFAULT_MODEL
     cli_path: str | None = None
     graphify_auto_update: bool = True
     graphify_query_first: bool = True
-    full_access_project: bool = False
+    full_access_project: bool = True
     auto_scaffold_on_app_request: bool = True
     require_change_confirmation: bool = True
     approval_workflow_mode: bool = True
@@ -54,12 +54,12 @@ class AgentConfig:
     def from_dict(cls, raw: dict[str, Any]) -> "AgentConfig":
         return cls(
             api_key=str(raw.get("api_key", "")).strip(),
-            backend_mode=str(raw.get("backend_mode", "claude_code")).strip() or "claude_code",
+            backend_mode=str(raw.get("backend_mode", "independent")).strip() or "independent",
             model=str(raw.get("model", DEFAULT_MODEL)).strip() or DEFAULT_MODEL,
             cli_path=raw.get("cli_path"),
             graphify_auto_update=bool(raw.get("graphify_auto_update", True)),
             graphify_query_first=bool(raw.get("graphify_query_first", True)),
-            full_access_project=bool(raw.get("full_access_project", False)),
+            full_access_project=bool(raw.get("full_access_project", True)),
             auto_scaffold_on_app_request=bool(raw.get("auto_scaffold_on_app_request", True)),
             require_change_confirmation=bool(raw.get("require_change_confirmation", True)),
             approval_workflow_mode=bool(raw.get("approval_workflow_mode", True)),
@@ -269,15 +269,15 @@ def load_or_init_config(
     backend_mode = backend_override or Prompt.ask(
         "Backend mode",
         choices=["claude_code", "independent"],
-        default="claude_code",
+        default="independent",
     )
     model_default = model_override or DEFAULT_MODEL
     model = Prompt.ask("Default model", default=model_default).strip() or model_default
     graphify_auto = Confirm.ask("Enable automatic graphify context updates?", default=True)
     graphify_query_first = Confirm.ask("Use graphify query-first context mode?", default=True)
     full_access_project = Confirm.ask(
-        "Allow full write/edit/delete access in project (agent mode)?",
-        default=False,
+        "Allow full write/edit/delete access in the project workspace (recommended for local coding)?",
+        default=True,
     )
     auto_scaffold = Confirm.ask(
         "Auto-scaffold project files when user asks to build an app?",

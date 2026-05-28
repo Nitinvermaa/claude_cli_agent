@@ -167,7 +167,7 @@ def render_shortcuts_help(console: Console) -> None:
             ("?", "shortcuts (this panel)"),
             ("/ + Tab", "host commands + hints"),
             ("/btw", "side question"),
-            ("@path", "file / dir / glob"),
+            ("@path", "file / dir / glob (Tab)"),
         ],
         key_style=key_style,
         dim_style=dim_style,
