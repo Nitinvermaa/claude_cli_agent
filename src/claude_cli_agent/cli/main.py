@@ -9,6 +9,7 @@ from typing import Annotated
 
 import typer
 
+from ..backends.registry import BACKEND_IDS, normalize_backend_id
 from ..config import load_or_init_config
 from ..console_theme import make_console
 from ..options_build import AgentMode
@@ -38,9 +39,9 @@ def _parse_mode(value: str) -> AgentMode:
 
 def _parse_backend(value: str) -> str:
     v = value.lower().strip()
-    if v not in {"claude_code", "independent"}:
-        raise typer.BadParameter("backend must be one of: claude_code, independent")
-    return v
+    if v not in BACKEND_IDS:
+        raise typer.BadParameter(f"backend must be one of: {', '.join(BACKEND_IDS)}")
+    return normalize_backend_id(v)
 
 
 @app.callback(invoke_without_command=True)
@@ -57,7 +58,10 @@ def root(
         ),
     ] = False,
     mode: Annotated[str, typer.Option("--mode", help="Runtime mode")] = "agent",
-    backend: Annotated[str | None, typer.Option("--backend", help="Backend: claude_code or independent")] = None,
+    backend: Annotated[
+        str | None,
+        typer.Option("--backend", help="Backend: claude_code, independent, copilot_sdk, langchain_copilot"),
+    ] = None,
     cwd: Annotated[Path, typer.Option("--cwd", help="Working directory")] = Path.cwd(),
     api_key: Annotated[str | None, typer.Option("--api-key", help="Override API key")] = None,
 ) -> None:

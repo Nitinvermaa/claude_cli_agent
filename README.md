@@ -4,17 +4,20 @@
 
 ## Runtime Options
 
-`cagent` supports two backend modes so users can choose:
+`cagent` supports multiple backends:
 
-- `independent` (**default**): uses direct Anthropic API (no `claude` binary required for chat/vision workflow).
-- `claude_code`: uses `claude-agent-sdk` transport with local `claude` CLI.
+- `independent` (**default**): direct Anthropic API with host file tools.
+- `claude_code`: `claude-agent-sdk` + local `claude` CLI (Write, Bash, MCP).
+- `copilot_sdk`: [GitHub Copilot SDK](https://github.com/github/copilot-sdk) (install `[copilot]` extra; `GITHUB_TOKEN` / PAT).
+- `langchain_copilot`: LangChain + GitHub Copilot chat (install `[langchain-copilot]` extra).
 
-Select backend at run time using `--backend`, or set it via `cagent config --backend ...`.
+**Default:** `independent` backend with **`ANTHROPIC_API_KEY`** — just run `cagent` after setting your key.  
+Other backends: `cagent --backend copilot_sdk`, etc. See **[USAGE.md](USAGE.md)** (usage guide) and [SETUP.md](SETUP.md) (install).
 
 ## Core Capabilities
 
 - First-run onboarding for API key + defaults
-- Dual backend runtime (`claude_code` or `independent`)
+- Pluggable backends (`claude_code`, `independent`, `copilot_sdk`, `langchain_copilot`)
 - Keyring-backed credential storage (with fallback)
 - Modes: `agent`, `plan`, `ask`, `debug`
 - Strict approval workflow (plan/implement/commit/push gates)
@@ -110,13 +113,20 @@ pipx uninstall claude-cli-agent
 pipx install --spec "/Users/nitinverma/AI_Project/claude_cli_agent[graphify]" claude-cli-agent
 ```
 
+## Documentation
+
+| Doc | Contents |
+|-----|----------|
+| **[USAGE.md](USAGE.md)** | **Usage guide** — default Anthropic backend, commands, backends, examples |
+| [SETUP.md](SETUP.md) | Install, API keys, first run, troubleshooting |
+
 ## Setup (API key, install, first run)
 
 See **[SETUP.md](SETUP.md)** for:
 
 - Installing with **pipx** or `pip install -e .`
 - Setting **`ANTHROPIC_API_KEY`** (`.env`, shell export, `cagent config`, or `/apikey`)
-- Choosing **independent** vs **claude_code** backend
+- Choosing a backend (**independent**, **claude_code**, **copilot_sdk**, **langchain_copilot**)
 - Write permissions and optional env vars
 
 ## First Run
@@ -126,6 +136,8 @@ cagent
 # or explicitly:
 cagent --backend independent
 cagent --backend claude_code
+cagent --backend copilot_sdk          # pip install 'claude-cli-agent[copilot]'
+cagent --backend langchain_copilot    # pip install 'claude-cli-agent[langchain-copilot]'
 ```
 
 On first run, cagent asks for:
@@ -238,7 +250,7 @@ Official reference: [Claude Code overview](https://docs.anthropic.com/en/docs/cl
 - `/session list|new|switch <session-id>`
 - `/chat list|new <name>|switch <name>` (named conversation aliases)
 - `/bwt <name>` (quick alias for `/chat switch <name>`)
-- `/backend status|switch <claude_code|independent>`
+- `/backend status|switch <claude_code|independent|copilot_sdk|langchain_copilot>`
 - `/subagent list|add <name> <description>|run <name> <task>`
 - `/mcp status|toggle <name> <on|off>|reconnect <name>`
 - `/context`

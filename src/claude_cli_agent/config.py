@@ -14,17 +14,26 @@ from rich.prompt import Confirm, Prompt
 APP_DIR = Path.home() / ".config" / "cagent"
 CONFIG_PATH = APP_DIR / "config.json"
 DEFAULT_MODEL = "claude-sonnet-4-6"
+# Default runtime: direct Anthropic API (reads ANTHROPIC_API_KEY and related env vars).
+DEFAULT_BACKEND = "independent"
 KEYRING_SERVICE = "cagent"
 KEYRING_USERNAME = "default"
+KEYRING_USERNAME_GITHUB = "github"
+DEFAULT_COPILOT_MODEL = "gpt-4.1"
+BACKEND_CHOICES = ("claude_code", "independent", "copilot_sdk", "langchain_copilot")
+COPILOT_BACKENDS = frozenset({"copilot_sdk", "langchain_copilot"})
+ANTHROPIC_BACKENDS = frozenset({"claude_code", "independent"})
 
 
 @dataclass
 class AgentConfig:
     """Runtime configuration for the CLI agent."""
 
-    api_key: str
-    backend_mode: str = "independent"
+    api_key: str = ""
+    github_token: str = ""
+    backend_mode: str = DEFAULT_BACKEND
     model: str = DEFAULT_MODEL
+    copilot_model: str = DEFAULT_COPILOT_MODEL
     cli_path: str | None = None
     graphify_auto_update: bool = True
     graphify_query_first: bool = True
@@ -54,8 +63,10 @@ class AgentConfig:
     def from_dict(cls, raw: dict[str, Any]) -> "AgentConfig":
         return cls(
             api_key=str(raw.get("api_key", "")).strip(),
-            backend_mode=str(raw.get("backend_mode", "independent")).strip() or "independent",
+            backend_mode=str(raw.get("backend_mode", DEFAULT_BACKEND)).strip() or DEFAULT_BACKEND,
+            github_token=str(raw.get("github_token", "")).strip(),
             model=str(raw.get("model", DEFAULT_MODEL)).strip() or DEFAULT_MODEL,
+            copilot_model=str(raw.get("copilot_model", DEFAULT_COPILOT_MODEL)).strip() or DEFAULT_COPILOT_MODEL,
             cli_path=raw.get("cli_path"),
             graphify_auto_update=bool(raw.get("graphify_auto_update", True)),
             graphify_query_first=bool(raw.get("graphify_query_first", True)),
@@ -86,7 +97,9 @@ class AgentConfig:
         return {
             "api_key": self.api_key if self.store_api_key_in_plaintext else "",
             "backend_mode": self.backend_mode,
+            "github_token": self.github_token if self.store_api_key_in_plaintext else "",
             "model": self.model,
+            "copilot_model": self.copilot_model,
             "cli_path": self.cli_path,
             "graphify_auto_update": self.graphify_auto_update,
             "graphify_query_first": self.graphify_query_first,
@@ -138,6 +151,94 @@ def _read_key_from_keyring() -> str | None:
     return value.strip() if value else None
 
 
+def _save_github_token_to_keyring(token: str) -> bool:
+    try:
+        import keyring  # type: ignore
+    except Exception:
+        return False
+    try:
+        keyring.set_password(KEYRING_SERVICE, KEYRING_USERNAME_GITHUB, token)
+        return True
+    except Exception:
+        return False
+
+
+def _read_github_token_from_keyring() -> str | None:
+    try:
+        import keyring  # type: ignore
+    except Exception:
+        return None
+    try:
+        value = keyring.get_password(KEYRING_SERVICE, KEYRING_USERNAME_GITHUB)
+    except Exception:
+        return None
+    return value.strip() if value else None
+
+
+def _github_token_from_env(dotenv_values: dict[str, str] | None = None) -> str:
+    dotenv_values = dotenv_values or {}
+    return (
+        os.environ.get("COPILOT_GITHUB_TOKEN")
+        or os.environ.get("GH_TOKEN")
+        or os.environ.get("GITHUB_TOKEN")
+        or dotenv_values.get("COPILOT_GITHUB_TOKEN")
+        or dotenv_values.get("GH_TOKEN")
+        or dotenv_values.get("GITHUB_TOKEN")
+        or ""
+    ).strip()
+
+
+def resolve_github_token(config: AgentConfig, *, cwd: Path | None = None) -> str:
+    """Resolve GitHub PAT for Copilot backends."""
+    token = (config.github_token or "").strip()
+    if token:
+        return token
+    token = _read_github_token_from_keyring() or ""
+    if token:
+        return token
+    dotenv_values: dict[str, str] = {}
+    if cwd is not None:
+        dotenv_values = _read_dotenv(cwd / ".env")
+    return _github_token_from_env(dotenv_values)
+
+
+def apply_github_token_to_env(token: str) -> None:
+    if not token:
+        return
+    if not os.environ.get("GITHUB_TOKEN"):
+        os.environ["GITHUB_TOKEN"] = token
+    if not os.environ.get("GH_TOKEN"):
+        os.environ["GH_TOKEN"] = token
+
+
+def backend_needs_anthropic_key(backend_mode: str) -> bool:
+    return backend_mode.strip().lower() in ANTHROPIC_BACKENDS
+
+
+def backend_needs_github_token(backend_mode: str) -> bool:
+    return backend_mode.strip().lower() in COPILOT_BACKENDS
+
+
+def _config_has_required_credentials(cfg: AgentConfig, dotenv_values: dict[str, str]) -> bool:
+    mode = (cfg.backend_mode or DEFAULT_BACKEND).strip().lower()
+    if backend_needs_github_token(mode):
+        if resolve_github_token(cfg, cwd=None) or _github_token_from_env(dotenv_values):
+            return True
+    if backend_needs_anthropic_key(mode):
+        if (cfg.api_key or "").strip() or _read_key_from_keyring():
+            return True
+        env_key = (
+            os.environ.get("CAGENT_ANTHROPIC_API_KEY")
+            or os.environ.get("ANTHROPIC_API_KEY")
+            or os.environ.get("CLAUDE_API_KEY")
+            or dotenv_values.get("CAGENT_ANTHROPIC_API_KEY")
+            or dotenv_values.get("ANTHROPIC_API_KEY")
+            or dotenv_values.get("CLAUDE_API_KEY")
+        )
+        return bool(env_key)
+    return bool((cfg.api_key or "").strip())
+
+
 def _write_config(config: AgentConfig) -> None:
     APP_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_PATH.write_text(json.dumps(config.to_dict(), indent=2), encoding="utf-8")
@@ -158,7 +259,10 @@ def _read_config() -> AgentConfig | None:
     cfg = AgentConfig.from_dict(raw)
     if not cfg.api_key:
         cfg.api_key = _read_key_from_keyring() or ""
-    return cfg if cfg.api_key else None
+    if not cfg.github_token:
+        cfg.github_token = _read_github_token_from_keyring() or ""
+    dotenv_values = _read_dotenv(Path.cwd() / ".env")
+    return cfg if _config_has_required_credentials(cfg, dotenv_values) else None
 
 
 def _read_dotenv(dotenv_path: Path) -> dict[str, str]:
@@ -191,6 +295,7 @@ def _usage_paths_for_cwd(cwd: Path | None) -> tuple[str, str]:
 def load_or_init_config(
     console: Console,
     api_key_override: str | None = None,
+    github_token_override: str | None = None,
     backend_override: str | None = None,
     cwd: Path | None = None,
 ) -> AgentConfig:
@@ -208,6 +313,22 @@ def load_or_init_config(
         or dotenv_values.get("ANTHROPIC_MODEL")
         or dotenv_values.get("CLAUDE_MODEL")
     )
+
+    if github_token_override:
+        cfg = _read_config() or AgentConfig()
+        cfg.github_token = github_token_override.strip()
+        if not cfg.usage_log_path:
+            cfg.usage_log_path = usage_log_path
+        if not cfg.usage_dashboard_path:
+            cfg.usage_dashboard_path = usage_dashboard_path
+        if model_override:
+            cfg.model = model_override
+        if backend_override:
+            cfg.backend_mode = backend_override
+        _save_github_token_to_keyring(github_token_override)
+        apply_github_token_to_env(github_token_override)
+        _write_config(cfg)
+        return cfg
 
     if api_key_override:
         cfg = _read_config() or AgentConfig(api_key=api_key_override)
@@ -247,8 +368,26 @@ def load_or_init_config(
         _write_config(cfg)
         return cfg
 
+    env_github = _github_token_from_env(dotenv_values)
+    if env_github:
+        cfg = _read_config() or AgentConfig()
+        cfg.github_token = env_github
+        if not cfg.usage_log_path:
+            cfg.usage_log_path = usage_log_path
+        if not cfg.usage_dashboard_path:
+            cfg.usage_dashboard_path = usage_dashboard_path
+        if model_override:
+            cfg.model = model_override
+        if backend_override:
+            cfg.backend_mode = backend_override
+        _save_github_token_to_keyring(env_github)
+        _write_config(cfg)
+        return cfg
+
     cfg = _read_config()
     if cfg:
+        if not cfg.github_token:
+            cfg.github_token = _read_github_token_from_keyring() or _github_token_from_env(dotenv_values)
         if not cfg.usage_log_path:
             cfg.usage_log_path = usage_log_path
         if not cfg.usage_dashboard_path:
@@ -262,17 +401,37 @@ def load_or_init_config(
 
     console.print("[bold cyan]Welcome to cagent[/bold cyan]")
     console.print("First run setup is required.")
-    key = Prompt.ask("Enter Anthropic API key", password=True).strip()
-    while not key:
-        key = Prompt.ask("API key cannot be empty. Enter Anthropic API key", password=True).strip()
 
     backend_mode = backend_override or Prompt.ask(
-        "Backend mode",
-        choices=["claude_code", "independent"],
-        default="independent",
+        "Backend mode (default: independent = Anthropic API via ANTHROPIC_API_KEY)",
+        choices=list(BACKEND_CHOICES),
+        default=DEFAULT_BACKEND,
     )
+    backend_mode = backend_mode.strip().lower()
+
+    key = ""
+    github_token = ""
+    if backend_needs_github_token(backend_mode):
+        github_token = Prompt.ask("Enter GitHub PAT (Copilot)", password=True).strip()
+        while not github_token:
+            github_token = Prompt.ask(
+                "GitHub token cannot be empty. Enter GitHub PAT",
+                password=True,
+            ).strip()
+    if backend_needs_anthropic_key(backend_mode):
+        key = Prompt.ask("Enter Anthropic API key", password=True).strip()
+        while not key:
+            key = Prompt.ask("API key cannot be empty. Enter Anthropic API key", password=True).strip()
+
     model_default = model_override or DEFAULT_MODEL
+    if backend_mode in COPILOT_BACKENDS:
+        model_default = DEFAULT_COPILOT_MODEL
     model = Prompt.ask("Default model", default=model_default).strip() or model_default
+    copilot_model = DEFAULT_COPILOT_MODEL
+    if backend_mode in COPILOT_BACKENDS:
+        copilot_model = (
+            Prompt.ask("Copilot model", default=DEFAULT_COPILOT_MODEL).strip() or DEFAULT_COPILOT_MODEL
+        )
     graphify_auto = Confirm.ask("Enable automatic graphify context updates?", default=True)
     graphify_query_first = Confirm.ask("Use graphify query-first context mode?", default=True)
     full_access_project = Confirm.ask(
@@ -311,8 +470,10 @@ def load_or_init_config(
     )
     config = AgentConfig(
         api_key=key,
+        github_token=github_token,
         backend_mode=backend_mode,
         model=model,
+        copilot_model=copilot_model,
         graphify_auto_update=graphify_auto,
         graphify_query_first=graphify_query_first,
         full_access_project=full_access_project,
@@ -331,15 +492,20 @@ def load_or_init_config(
         accent_color="bright_cyan",
         store_api_key_in_plaintext=plain_store,
     )
-    saved_in_keyring = _save_key_to_keyring(key)
+    if key:
+        saved_in_keyring = _save_key_to_keyring(key)
+        if saved_in_keyring and not plain_store:
+            console.print("[green]Anthropic API key stored in system keyring.[/green]")
+        elif not plain_store and backend_needs_anthropic_key(backend_mode):
+            console.print(
+                "[yellow]Keyring not available; Anthropic key not persisted in plaintext. "
+                "Set ANTHROPIC_API_KEY before launching.[/yellow]"
+            )
+    if github_token:
+        if _save_github_token_to_keyring(github_token):
+            console.print("[green]GitHub token stored in system keyring.[/green]")
+        apply_github_token_to_env(github_token)
     _write_config(config)
-    if saved_in_keyring and not plain_store:
-        console.print("[green]API key stored in system keyring.[/green]")
-    elif not plain_store:
-        console.print(
-            "[yellow]Keyring not available; key is not persisted in plaintext. "
-            "Set CAGENT_ANTHROPIC_API_KEY before launching.[/yellow]"
-        )
     console.print(f"[green]Saved config:[/green] {CONFIG_PATH}")
     return config
 
@@ -348,4 +514,6 @@ def persist_config(config: AgentConfig) -> None:
     """Persist config safely and refresh keyring when possible."""
     if config.api_key:
         _save_key_to_keyring(config.api_key)
+    if config.github_token:
+        _save_github_token_to_keyring(config.github_token)
     _write_config(config)

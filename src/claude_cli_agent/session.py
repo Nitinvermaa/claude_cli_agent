@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import os
 import re
 import shlex
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import anthropic
-from claude_agent_sdk import ClaudeSDKClient
-from claude_agent_sdk.types import AgentDefinition, AssistantMessage, ResultMessage, ToolUseBlock
+from claude_agent_sdk.types import AgentDefinition
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
@@ -23,11 +20,13 @@ from rich.prompt import Prompt
 from .annotations import expand_prompt_annotations
 from .approval_audit import ApprovalAuditStore, ApprovalEvent
 from .approval_token import ApprovalTokenManager
+from .backends import create_backend, normalize_backend_id
+from .backends.base import BackendContext
+from .backends.claude_code import ClaudeCodeBackend
 from .config import AgentConfig, load_or_init_config, persist_config
 from .console_theme import use_dark_ink
 from .graphify_integration import GraphifyManager
-from .independent_agent import run_independent_tool_loop
-from .options_build import AgentMode, build_options
+from .options_build import AgentMode
 from .project_permissions import sync_claude_project_permissions
 from .policy import needs_change_confirmation, needs_commit_confirmation, needs_push_confirmation
 from .render import (
@@ -89,10 +88,9 @@ class Runtime:
             agents=persisted.agents,
             session_aliases=persisted.session_aliases,
         )
-        self.client: ClaudeSDKClient | None = None
-        self.backend_mode = config.backend_mode if config.backend_mode in {"claude_code", "independent"} else "independent"
-        self.independent_client: anthropic.Anthropic | None = None
-        self.independent_histories: dict[str, list[dict]] = {}
+        self.backend_mode = normalize_backend_id(config.backend_mode)
+        self.config.backend_mode = self.backend_mode
+        self._backend = create_backend(self.backend_mode)
         self.approval_audit = ApprovalAuditStore(Path(config.approval_audit_path).expanduser())
         self.approval_tokens = ApprovalTokenManager()
         self.graphify = GraphifyManager(
@@ -136,7 +134,11 @@ class Runtime:
         textual_hint(self.console)
         if os.environ.get("CAGENT_ASCIIMATICS_BOOT", "").lower() in {"1", "true", "yes"}:
             asciimatics_splash(self.console)
-        if self.backend_mode == "claude_code" and self._effective_full_access():
+        if (
+            self.backend_mode == "claude_code"
+            and self._backend.capabilities().uses_claude_project_permissions
+            and self._effective_full_access()
+        ):
             sync_claude_project_permissions(self.console, self.cwd, full_access=True)
         await self._connect()
         render_welcome(
@@ -172,11 +174,37 @@ class Runtime:
         await self._repl()
 
     async def stop(self) -> None:
-        if self.client:
-            await self.client.disconnect()
-            self.client = None
-        self.independent_client = None
+        await self._backend.disconnect()
         self._persist_state()
+
+    @property
+    def client(self):
+        """Claude SDK client when claude_code backend is active."""
+        if isinstance(self._backend, ClaudeCodeBackend):
+            return self._backend.client
+        return None
+
+    def _backend_context(self) -> BackendContext:
+        return BackendContext(
+            config=self.config,
+            cwd=self.cwd,
+            mode=self.state.active_mode,
+            console=self.console,
+            active_session_id=self.state.active_session_id,
+            known_session_ids=self.state.known_session_ids,
+            agents=self.state.agents,
+            effective_full_access=self._effective_full_access(),
+            set_active_session_id=self._set_active_session_id,
+            add_known_session_id=self._add_known_session_id,
+            persist_state=self._persist_state,
+        )
+
+    def _set_active_session_id(self, session_id: str | None) -> None:
+        self.state.active_session_id = session_id
+
+    def _add_known_session_id(self, session_id: str) -> None:
+        if session_id and session_id not in self.state.known_session_ids:
+            self.state.known_session_ids.append(session_id)
 
     def _persist_state(self) -> None:
         self.state_store.save(self.state.to_persisted())
@@ -216,65 +244,14 @@ class Runtime:
         return bool(re.fullmatch(r"#[0-9a-fA-F]{6}", sample))
 
     async def _connect(self) -> None:
-        if self.client:
-            await self.client.disconnect()
-            self.client = None
-
-        if self.backend_mode == "claude_code":
-            resume_session_id: str | None = None
-            if self.state.active_session_id:
-                try:
-                    uuid.UUID(self.state.active_session_id)
-                    resume_session_id = self.state.active_session_id
-                except ValueError:
-                    resume_session_id = None
-            full_access = self._effective_full_access()
-            if full_access:
-                sync_claude_project_permissions(self.console, self.cwd, full_access=True)
-            options = build_options(
-                config=self.config,
-                cwd=self.cwd,
-                mode=self.state.active_mode,
-                resume_session_id=resume_session_id,
-                agents=self.state.agents,
-                full_access_override=full_access,
-            )
-            self.client = ClaudeSDKClient(options=options)
-            try:
-                await self.client.connect()
-            except Exception:
-                if resume_session_id is None:
-                    raise
-                # Resume IDs can become stale across workspaces/logins; retry fresh.
-                self.console.print(
-                    "[yellow]Previous Claude session could not be resumed; starting a fresh session.[/yellow]"
-                )
-                await self.client.disconnect()
-                self.client = None
-                self.state.active_session_id = None
-                options = build_options(
-                    config=self.config,
-                    cwd=self.cwd,
-                    mode=self.state.active_mode,
-                    resume_session_id=None,
-                    agents=self.state.agents,
-                    full_access_override=self._effective_full_access(),
-                )
-                self.client = ClaudeSDKClient(options=options)
-                await self.client.connect()
-            return
-
-        # Independent backend: local session/thread management.
-        if self.independent_client is None:
-            self.independent_client = anthropic.Anthropic(api_key=self.config.api_key)
-        if not self.state.active_session_id:
-            self.state.active_session_id = "local-1"
-        self.independent_histories.setdefault(self.state.active_session_id, [])
-
-    def _independent_workspace_write_allowed(self) -> bool:
-        if self.state.active_mode == "ask":
-            return False
-        return self._effective_full_access()
+        await self._backend.disconnect()
+        if (
+            self.backend_mode == "claude_code"
+            and self._backend.capabilities().uses_claude_project_permissions
+            and self._effective_full_access()
+        ):
+            sync_claude_project_permissions(self.console, self.cwd, full_access=True)
+        await self._backend.connect(self._backend_context())
 
     async def _prompt_line(self) -> str:
         if self._prompt_session is None:
@@ -316,11 +293,8 @@ class Runtime:
 
     async def _send_and_render(self, prompt: str) -> None:
         if self.backend_mode == "claude_code":
-            assert self.client is not None
-        else:
-            if self.independent_client is None:
+            if self.client is None:
                 await self._connect()
-            assert self.independent_client is not None
         changed_or_impl = needs_change_confirmation(prompt)
         commit_like = needs_commit_confirmation(prompt)
         push_like = needs_push_confirmation(prompt)
@@ -400,172 +374,39 @@ class Runtime:
             caption="Linking context and thinking…",
             accent_color=self.config.accent_color,
         ):
-            if self.backend_mode == "claude_code":
-                assert self.client is not None
-                response_chars = 0
-                await self.client.query(prompt_to_send)
-                async for message in self.client.receive_response():
-                    render_message(self.console, message)
-                    if isinstance(message, AssistantMessage):
-                        for block in message.content:
-                            maybe_text = getattr(block, "text", None)
-                            if isinstance(maybe_text, str):
-                                response_chars += len(maybe_text)
-                            if isinstance(block, ToolUseBlock) and block.name in {
-                                "Write",
-                                "Edit",
-                                "MultiEdit",
-                                "NotebookEdit",
-                            }:
-                                changed_files = True
-                    if isinstance(message, ResultMessage):
-                        if message.session_id and message.session_id not in self.state.known_session_ids:
-                            self.state.known_session_ids.append(message.session_id)
-                        if message.session_id:
-                            self.state.active_session_id = message.session_id
-                            self._persist_state()
-                input_tokens = len(prompt_to_send) // 4
-                output_tokens = max(1, response_chars // 4) if response_chars else 0
+            bctx = self._backend_context()
+            if self.backend_mode == "claude_code" and self.client is None:
+                await self._connect()
+            try:
+                result = await self._backend.query(prompt_to_send, bctx)
+            except Exception as exc:
+                self.console.print(Panel(str(exc), title="Backend error", border_style="red"))
+                result = None
+            if result is not None:
+                if result.panel_title and result.text:
+                    self.console.print(Panel(result.text, title=result.panel_title, border_style="cyan"))
+                model_name = self.config.copilot_model if self.backend_mode in {
+                    "copilot_sdk",
+                    "langchain_copilot",
+                } else self.config.model
                 self.usage_tracker.append(
                     backend_mode=self.backend_mode,
                     session_id=self.state.active_session_id,
-                    model=self.config.model,
+                    model=model_name,
                     prompt_chars=len(prompt_to_send),
-                    response_chars=response_chars,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    approx_tokens=True,
-                    success=True,
+                    response_chars=result.response_chars or len(result.text),
+                    input_tokens=result.input_tokens,
+                    output_tokens=result.output_tokens,
+                    approx_tokens=result.approx_tokens,
+                    success=result.success,
+                    error=result.error,
                 )
-            else:
-                text, input_tokens, output_tokens, success, error, indep_changed = await self._query_independent(
-                    prompt_to_send
-                )
-                self.console.print(Panel(text, title="Assistant (independent backend)", border_style="cyan"))
-                self.usage_tracker.append(
-                    backend_mode=self.backend_mode,
-                    session_id=self.state.active_session_id,
-                    model=self.config.model,
-                    prompt_chars=len(prompt_to_send),
-                    response_chars=len(text),
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    approx_tokens=False,
-                    success=success,
-                    error=error,
-                )
-                changed_files = changed_files or indep_changed
+                changed_files = changed_files or result.changed_files
         self.usage_tracker.render_terminal_table(self.console, limit=5)
         await self.graphify.maybe_update(self.cwd, changed=changed_files)
         if task_override_activated:
             self.state.next_task_full_access = False
             await self._connect()
-
-    async def _query_independent(
-        self, prompt: str
-    ) -> tuple[str, int, int, bool, str | None, bool]:
-        assert self.independent_client is not None
-        session_id = self.state.active_session_id or "local-1"
-        history = self.independent_histories.setdefault(session_id, [])
-        history.append({"role": "user", "content": prompt})
-
-        allow_write = self._independent_workspace_write_allowed()
-        system_lines = [
-            "You are cagent, a production coding assistant using the Anthropic API (independent backend).",
-            f"Workspace root on disk: {self.cwd.resolve()}",
-            "You always have the read_file tool to inspect project files.",
-            "On large codebases: sample key modules first (entry points, configs, tests); avoid dumping "
-            "every source file into context before writing the report.",
-        ]
-        if allow_write:
-            system_lines.append(
-                "You have write_file (create/overwrite) and delete_path (remove files or directories; "
-                "use recursive=true only when intentionally deleting a non-empty directory tree). "
-                "Use these tools for real edits under the workspace root—do not ask the user to paste into an editor "
-                "unless they prefer that."
-            )
-        else:
-            system_lines.append(
-                "Mutating tools are disabled in ask mode (read-only). Use read_file only; switch to "
-                "/mode agent, plan, or debug for writes, or use the claude_code backend."
-            )
-        system = "\n".join(system_lines)
-
-        def _run() -> tuple[str, int, int, str | None, bool]:
-            return run_independent_tool_loop(
-                self.independent_client,
-                model=self.config.model,
-                system=system,
-                messages=history,
-                cwd=self.cwd,
-                allow_write=allow_write,
-            )
-
-        try:
-            text, input_tokens, output_tokens, err, changed_files = await asyncio.to_thread(_run)
-        except Exception as exc:
-            err = str(exc)
-            text = f"Independent backend request failed: {err}"
-            history.append({"role": "assistant", "content": text})
-            self._persist_state()
-            return text, 0, 0, False, err, False
-
-        success = err is None
-        if session_id not in self.state.known_session_ids:
-            self.state.known_session_ids.append(session_id)
-        self.state.active_session_id = session_id
-        self._persist_state()
-        return text, input_tokens, output_tokens, success, err, changed_files
-
-    async def _query_independent_vision(self, *, image_path: str, question: str) -> str:
-        assert self.independent_client is not None
-        target = (self.cwd / image_path).resolve() if not Path(image_path).is_absolute() else Path(image_path)
-        if not target.exists() or not target.is_file():
-            return f"Image not found: {image_path}"
-        mime = "image/png"
-        suffix = target.suffix.lower()
-        if suffix in {".jpg", ".jpeg"}:
-            mime = "image/jpeg"
-        elif suffix == ".webp":
-            mime = "image/webp"
-        try:
-            raw = target.read_bytes()
-        except OSError as exc:
-            return f"Failed to read image: {exc}"
-        b64 = base64.b64encode(raw).decode("utf-8")
-
-        def _call() -> anthropic.types.Message:
-            return self.independent_client.messages.create(
-                model=self.config.model,
-                max_tokens=1200,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": mime,
-                                    "data": b64,
-                                },
-                            },
-                            {"type": "text", "text": question},
-                        ],
-                    }
-                ],
-            )
-
-        try:
-            response = await asyncio.to_thread(_call)
-        except Exception as exc:
-            return f"Vision request failed: {exc}"
-        out: list[str] = []
-        for block in response.content:
-            maybe_text = getattr(block, "text", None)
-            if maybe_text:
-                out.append(maybe_text)
-        return "\n".join(out).strip() or "(no text response)"
 
     async def _run_approval_workflow(
         self,
@@ -906,56 +747,71 @@ class Runtime:
         return True
 
     async def _show_context(self) -> None:
-        if self.backend_mode == "claude_code":
-            assert self.client is not None
-            usage = await self.client.get_context_usage()
-            render_context_usage(self.console, usage)
-        else:
-            sid = self.state.active_session_id or "local-1"
-            turns = len(self.independent_histories.get(sid, []))
-            approx_chars = sum(
-                len(str(item.get("content", "")))
-                for item in self.independent_histories.get(sid, [])
-                if isinstance(item, dict)
-            )
-            approx_tokens = approx_chars // 4
-            self.console.print(
-                f"[bold]Independent context:[/bold] session={sid} turns={turns} ~tokens={approx_tokens}"
-            )
+        await self._backend.show_context(self._backend_context())
         self.console.print("[bold]Cost-saving suggestions:[/bold]")
         for tip in self.graphify.suggest_cost_optimizations():
             self.console.print(f"- {tip}")
 
     async def _handle_apikey_command(self, parts: list[str]) -> None:
         if len(parts) < 2:
-            self.console.print("[yellow]Use: /apikey set <key> | /apikey show[/yellow]")
+            self.console.print(
+                "[yellow]Use: /apikey show|set <key> | /apikey anthropic set|show | /apikey github set|show[/yellow]"
+            )
             return
         sub = parts[1].lower()
+        provider = "anthropic"
+        if sub in {"anthropic", "github"}:
+            provider = sub
+            sub = parts[2].lower() if len(parts) > 2 else "show"
+            parts = [parts[0], sub, *parts[3:]]
+
         if sub == "show":
-            key = self.config.api_key or ""
+            if provider == "github":
+                from .config import resolve_github_token
+
+                key = resolve_github_token(self.config, cwd=self.cwd)
+                label = "GitHub token"
+            else:
+                key = self.config.api_key or ""
+                label = "Anthropic API key"
             if not key:
-                self.console.print("[yellow]No API key configured.[/yellow]")
+                self.console.print(f"[yellow]No {label} configured.[/yellow]")
                 return
             masked = f"{key[:8]}...{key[-6:]}" if len(key) > 18 else "***"
-            self.console.print(f"[green]Configured API key:[/green] {masked}")
+            self.console.print(f"[green]Configured {label}:[/green] {masked}")
             return
         if sub == "set":
             key = " ".join(parts[2:]).strip() if len(parts) > 2 else ""
             if not key:
-                key = (await asyncio.to_thread(Prompt.ask, "Enter Anthropic API key", password=True)).strip()
+                prompt = (
+                    "Enter GitHub PAT"
+                    if provider == "github"
+                    else "Enter Anthropic API key"
+                )
+                key = (await asyncio.to_thread(Prompt.ask, prompt, password=True)).strip()
             if not key:
-                self.console.print("[yellow]API key cannot be empty.[/yellow]")
+                self.console.print("[yellow]Token cannot be empty.[/yellow]")
                 return
-            self.config = load_or_init_config(
-                self.console,
-                api_key_override=key,
-                backend_override=self.backend_mode,
-                cwd=self.cwd.resolve(),
-            )
+            if provider == "github":
+                self.config = load_or_init_config(
+                    self.console,
+                    github_token_override=key,
+                    backend_override=self.backend_mode,
+                    cwd=self.cwd.resolve(),
+                )
+            else:
+                self.config = load_or_init_config(
+                    self.console,
+                    api_key_override=key,
+                    backend_override=self.backend_mode,
+                    cwd=self.cwd.resolve(),
+                )
             await self._connect()
-            self.console.print("[green]API key updated and backend reconnected.[/green]")
+            self.console.print(f"[green]{provider} credential updated and backend reconnected.[/green]")
             return
-        self.console.print("[yellow]Use: /apikey set <key> | /apikey show[/yellow]")
+        self.console.print(
+            "[yellow]Use: /apikey show|set | /apikey anthropic|github show|set[/yellow]"
+        )
 
     async def _handle_theme_command(self, parts: list[str]) -> None:
         ink = use_dark_ink()
@@ -1179,47 +1035,45 @@ class Runtime:
         )
 
     async def _handle_backend_command(self, parts: list[str]) -> None:
+        from .backends.registry import BACKEND_IDS, ensure_backend_available
+
         if len(parts) < 2:
-            self.console.print("[yellow]Use: /backend status|switch <claude_code|independent>[/yellow]")
+            self.console.print(
+                "[yellow]Use: /backend status|switch <backend_id>[/yellow]\n"
+                f"[dim]Backends: {', '.join(BACKEND_IDS)}[/dim]"
+            )
             return
         sub = parts[1].lower()
-        # Convenience alias: allow `/backend independent` and `/backend claude_code`.
-        if sub in {"claude_code", "independent"}:
+        if sub in BACKEND_IDS:
             parts = [parts[0], "switch", sub]
             sub = "switch"
         if sub == "status":
             self.console.print(f"[bold]Active backend:[/bold] {self.backend_mode}")
-            if use_dark_ink():
-                self.console.print(
-                    "[#475569]claude_code => SDK + local `claude` transport; "
-                    "independent => direct Anthropic API[/#475569]"
-                )
-            else:
-                self.console.print(
-                    "[#a3b1c6]claude_code => SDK + local `claude` transport; "
-                    "independent => direct Anthropic API[/#a3b1c6]"
-                )
+            self.console.print(
+                "[dim]claude_code · independent · copilot_sdk · langchain_copilot[/dim]"
+            )
             return
         if sub == "switch":
             if len(parts) < 3:
-                self.console.print("[yellow]Use: /backend switch <claude_code|independent>[/yellow]")
+                self.console.print(f"[yellow]Use: /backend switch <{'|'.join(BACKEND_IDS)}>[/yellow]")
                 return
-            target = parts[2].lower().strip()
-            if target not in {"claude_code", "independent"}:
-                self.console.print("[yellow]Backend must be claude_code or independent.[/yellow]")
-                return
+            target = normalize_backend_id(parts[2])
             if target == self.backend_mode:
-                if use_dark_ink():
-                    self.console.print(f"[#475569]Backend already set to {target}.[/#475569]")
-                else:
-                    self.console.print(f"[#a3b1c6]Backend already set to {target}.[/#a3b1c6]")
+                self.console.print(f"[dim]Backend already set to {target}.[/dim]")
+                return
+            try:
+                ensure_backend_available(target)
+            except RuntimeError as exc:
+                self.console.print(f"[red]{exc}[/red]")
                 return
             self.backend_mode = target
             self.config.backend_mode = target
+            self._backend = create_backend(target)
             await self._connect()
+            persist_config(self.config)
             self.console.print(f"[green]Switched backend to {target}[/green]")
             return
-        self.console.print("[yellow]Use: /backend status|switch <claude_code|independent>[/yellow]")
+        self.console.print("[yellow]Use: /backend status|switch <backend_id>[/yellow]")
 
     async def _handle_subagent_command(self, parts: list[str]) -> None:
         if len(parts) < 2:
@@ -1254,7 +1108,7 @@ class Runtime:
         self.console.print("[yellow]Invalid subagent command.[/yellow]")
 
     async def _handle_mcp_command(self, parts: list[str]) -> None:
-        if self.backend_mode != "claude_code":
+        if not self._backend.capabilities().supports_mcp:
             self.console.print("[yellow]MCP controls are only available in claude_code backend.[/yellow]")
             return
         assert self.client is not None
@@ -1293,9 +1147,13 @@ class Runtime:
             return
         image_path = parts[1]
         question = " ".join(parts[2:])
-        if self.backend_mode == "independent":
-            text = await self._query_independent_vision(image_path=image_path, question=question)
-            self.console.print(Panel(text, title="Vision (independent backend)", border_style="magenta"))
+        if self._backend.capabilities().supports_vision:
+            text = await self._backend.vision_query(
+                image_path=image_path, question=question, ctx=self._backend_context()
+            )
+            self.console.print(
+                Panel(text, title=f"Vision ({self.backend_mode})", border_style="magenta")
+            )
             return
         prompt = (
             "Analyze the image at this local path using available tooling, then answer:\n"
@@ -1471,57 +1329,21 @@ class Runtime:
 
     async def _handle_authcheck_command(self) -> None:
         self.console.print(f"[bold]Backend:[/bold] {self.backend_mode}")
-        key = self.config.api_key or ""
-        masked = f"...{key[-6:]}" if len(key) >= 6 else "(short key)"
-        self.console.print(f"[bold]Configured API key fingerprint:[/bold] {masked}")
+        caps = self._backend.capabilities()
+        if caps.needs_anthropic_key:
+            key = self.config.api_key or ""
+            masked = f"...{key[-6:]}" if len(key) >= 6 else "(not set)"
+            self.console.print(f"[bold]Anthropic key fingerprint:[/bold] {masked}")
+        if caps.needs_github_token:
+            from .config import resolve_github_token
 
-        if self.backend_mode == "independent":
-            self.console.print(
-                "[green]Independent backend uses direct Anthropic API from cagent config key.[/green]"
-            )
-            self.console.print(
-                "[dim]Workspace tools: read_file; write_file and delete_path when not in ask mode and full access is on (default).[/dim]"
-            )
-            self.console.print(
-                "[dim]Verification: run a small prompt, then confirm usage in the intended API account dashboard.[/dim]"
-            )
-            return
+            ght = resolve_github_token(self.config, cwd=self.cwd)
+            masked = f"...{ght[-6:]}" if len(ght) >= 6 else "(not set)"
+            self.console.print(f"[bold]GitHub token fingerprint:[/bold] {masked}")
 
-        # claude_code backend: probe + guidance
-        if self.client is None:
-            await self._connect()
-        assert self.client is not None
-
-        probe_prompt = (
-            "Auth probe: reply with exactly 'AUTH_PROBE_OK'. "
-            "No tool use. No extra words."
-        )
-        ok = False
         async with cartoon_loader(
             self.console,
-            caption="Running auth probe with the cat…",
-            accent_color="cyan",
+            caption="Running auth probe…",
+            accent_color=self.config.accent_color,
         ):
-            await self.client.query(probe_prompt)
-            async for message in self.client.receive_response():
-                if isinstance(message, AssistantMessage):
-                    for block in message.content:
-                        if hasattr(block, "text") and getattr(block, "text", "").strip() == "AUTH_PROBE_OK":
-                            ok = True
-                if isinstance(message, ResultMessage):
-                    break
-
-        if ok:
-            self.console.print("[green]Auth probe succeeded.[/green]")
-        else:
-            self.console.print(
-                "[yellow]Auth probe returned unexpected content, but backend is reachable.[/yellow]"
-            )
-
-        self.console.print(
-            "[bold]Important:[/bold] claude_code backend runs through local `claude` transport. "
-            "Final billing account depends on Claude Code auth precedence."
-        )
-        self.console.print(
-            "[dim]Recommended verification:[/dim] send one tiny prompt here, then confirm usage appears on the intended account dashboard."
-        )
+            await self._backend.authcheck(self._backend_context())

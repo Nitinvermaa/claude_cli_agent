@@ -2,11 +2,16 @@
 
 This guide covers installation, **Anthropic API key** configuration, and a first successful run.
 
+**Default runtime:** backend `independent` using **`ANTHROPIC_API_KEY`** (no GitHub token required).  
+For day-to-day commands, backends, and examples, see **[USAGE.md](USAGE.md)**.
+
 ## Requirements
 
 - Python **3.11+**
 - An [Anthropic API key](https://console.anthropic.com/) (starts with `sk-ant-`)
 - Optional for `claude_code` backend: [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) (`claude` on your `PATH`)
+- Optional for `copilot_sdk` backend: [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) + `pip install 'claude-cli-agent[copilot]'`
+- Optional for `langchain_copilot`: `pip install 'claude-cli-agent[langchain-copilot]'` and a GitHub PAT with Copilot access
 
 ## Install cagent
 
@@ -97,6 +102,31 @@ Optional backend preference:
 cagent config --backend independent
 # or
 cagent config --backend claude_code
+cagent config --backend copilot_sdk
+```
+
+### GitHub PAT (Copilot backends)
+
+For `copilot_sdk` or `langchain_copilot`, set a GitHub Personal Access Token with Copilot access:
+
+```bash
+export GITHUB_TOKEN='ghp_your_pat_here'
+# or: GH_TOKEN, COPILOT_GITHUB_TOKEN
+cagent --backend copilot_sdk --cwd .
+```
+
+In the REPL:
+
+```text
+/apikey github set ghp_your_pat_here
+/authcheck
+```
+
+Install optional extras:
+
+```bash
+pipx install '/path/to/claude_cli_agent[copilot]'
+pipx install '/path/to/claude_cli_agent[langchain-copilot]'
 ```
 
 Config file: `~/.config/cagent/config.json`  
@@ -139,14 +169,17 @@ In the REPL:
 |---------|---------|-------------|
 | **independent** (default) | `cagent` or `cagent --backend independent` | Direct Anthropic API; host `read_file` / `write_file` tools |
 | **claude_code** | `cagent --backend claude_code` | Full Claude Code tools (Write, Bash, MCP); needs `claude` CLI |
+| **copilot_sdk** | `cagent --backend copilot_sdk` | Official GitHub Copilot SDK agent runtime; needs `GITHUB_TOKEN` + `[copilot]` extra |
+| **langchain_copilot** | `cagent --backend langchain_copilot` | LangChain + Copilot models + host file tools; needs PAT + `[langchain-copilot]` extra |
 
 ```bash
 cagent config --backend independent
+cagent config --backend copilot_sdk
 ```
 
 ## File write permissions (`claude_code` backend)
 
-After you approve full access (`full_access_project` or `/approve session`), cagent **0.2.28+**:
+After you approve full access (`full_access_project` or `/approve session`), cagent **0.2.29+**:
 
 - Writes `.claude/settings.json` in your project **from the host** (not via Claude tools)
 - Uses SDK `permission_mode=bypassPermissions` so Write/Edit/Bash work without per-file prompts
@@ -184,4 +217,4 @@ export CAGENT_GRAPHIFY_UPDATE_TIMEOUT=20
 | Write denied | `/approve session`, `/mode agent`, confirm `.claude/settings.json` exists in project |
 | Output token limit | `export CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000`; write HTML with **Write** tool, not in chat |
 
-See also [README.md](README.md) for commands, annotations (`@` + Tab), and REPL reference.
+See also [USAGE.md](USAGE.md) (usage guide), [README.md](README.md) (features), and `.env.example`.

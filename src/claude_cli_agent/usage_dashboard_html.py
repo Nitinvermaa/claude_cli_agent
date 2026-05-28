@@ -104,7 +104,7 @@ def build_usage_dashboard_html(events: list[dict], total_cost: float) -> str:
     <div class="header-content">
       <div class="header-left">
         <h1 class="dashboard-title">cagent observability</h1>
-        <p class="dashboard-subtitle">Tokens, sessions, and cost — independent + claude_code</p>
+        <p class="dashboard-subtitle">Tokens, sessions, and cost — all backends</p>
       </div>
       <div class="header-right">
         <div class="last-updated">Last export: <span id="lastUpdatedPill">--</span></div>
@@ -126,6 +126,8 @@ def build_usage_dashboard_html(events: list[dict], total_cost: float) -> str:
               <option value="all">all</option>
               <option value="independent">independent</option>
               <option value="claude_code">claude_code</option>
+              <option value="copilot_sdk">copilot_sdk</option>
+              <option value="langchain_copilot">langchain_copilot</option>
             </select>
           </div>
           <div class="filter-group">
@@ -323,10 +325,19 @@ def build_usage_dashboard_html(events: list[dict], total_cost: float) -> str:
       const ctx = shareCanvas.getContext("2d");
       const w = shareCanvas.width, h = shareCanvas.height;
       ctx.clearRect(0, 0, w, h); ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);
-      const ind = filtered.filter((e) => e.backend_mode === "independent").length;
-      const cc = filtered.filter((e) => e.backend_mode === "claude_code").length;
-      const total = Math.max(1, ind + cc);
-      const values = [{{ name: "claude_code", count: cc, color: "#5b6cff" }}, {{ name: "independent", count: ind, color: "#12b76a" }}];
+      const counts = {{
+        independent: filtered.filter((e) => e.backend_mode === "independent").length,
+        claude_code: filtered.filter((e) => e.backend_mode === "claude_code").length,
+        copilot_sdk: filtered.filter((e) => e.backend_mode === "copilot_sdk").length,
+        langchain_copilot: filtered.filter((e) => e.backend_mode === "langchain_copilot").length,
+      }};
+      const values = [
+        {{ name: "claude_code", count: counts.claude_code, color: "#5b6cff" }},
+        {{ name: "independent", count: counts.independent, color: "#12b76a" }},
+        {{ name: "copilot_sdk", count: counts.copilot_sdk, color: "#f59e0b" }},
+        {{ name: "langchain_copilot", count: counts.langchain_copilot, color: "#8b5cf6" }},
+      ].filter((v) => v.count > 0);
+      const total = Math.max(1, values.reduce((s, v) => s + v.count, 0));
       const cx = 110, cy = h / 2, r = 74, inner = 45;
       let start = -Math.PI / 2;
       values.forEach((v) => {{ const sweep = (v.count / total) * Math.PI * 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, start, start + sweep); ctx.closePath(); ctx.fillStyle = v.color; ctx.fill(); start += sweep; }});

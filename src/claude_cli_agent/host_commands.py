@@ -15,7 +15,7 @@ COMMAND_META: dict[str, str] = {
     "/bwt": "Switch named conversation (alias for /chat switch).",
     "/btw": "Ask a quick side question without changing the main conversation.",
     "/context": "Show context usage / token pressure hints.",
-    "/backend": "Show/switch backend. Use /backend status, /backend switch independent, or /backend independent.",
+    "/backend": "Show/switch backend (claude_code, independent, copilot_sdk, langchain_copilot).",
     "/subagent": "List, add, or run configured subagent profiles.",
     "/mcp": "MCP server status / reconnect / toggle (claude_code only).",
     "/vision": "Ask about an image path (vision-capable models).",

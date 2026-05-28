@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 from pathlib import Path
 from typing import Any
 
 import anthropic
+
+from .host_tools import run_host_tool, workspace_tool_definitions
 
 
 def _max_tool_rounds() -> int:
@@ -105,16 +106,6 @@ def repair_independent_message_history(messages: list[dict[str, Any]]) -> None:
         break
 
 
-def _safe_workspace_path(cwd: Path, rel: str) -> Path:
-    rel = (rel or "").strip().replace("\\", "/").lstrip("/")
-    if not rel or ".." in Path(rel).parts:
-        raise ValueError("path must be relative to workspace and must not contain '..'")
-    root = cwd.resolve()
-    target = (root / rel).resolve()
-    target.relative_to(root)
-    return target
-
-
 def _coerce_tool_input(raw: object) -> dict[str, Any]:
     if isinstance(raw, dict):
         return raw
@@ -165,148 +156,6 @@ def _text_from_blocks(content: object) -> str:
     return "\n".join(parts).strip()
 
 
-def _workspace_tool_definitions(*, allow_write: bool) -> list[dict[str, Any]]:
-    tools: list[dict[str, Any]] = [
-        {
-            "name": "read_file",
-            "description": "Read a UTF-8 text file under the workspace root.",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Path relative to workspace (no leading slash, no ..)",
-                    },
-                },
-                "required": ["path"],
-            },
-        },
-    ]
-    if allow_write:
-        tools.append(
-            {
-                "name": "write_file",
-                "description": (
-                    "Create or overwrite a UTF-8 text file under the workspace. "
-                    "Creates parent directories as needed. Use for real project edits."
-                ),
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Path relative to workspace (no leading slash, no ..)",
-                        },
-                        "content": {"type": "string", "description": "Full new file contents"},
-                    },
-                    "required": ["path", "content"],
-                },
-            }
-        )
-        tools.append(
-            {
-                "name": "delete_path",
-                "description": (
-                    "Delete a file, or a directory. Empty directories can be removed without recursive. "
-                    "For a non-empty directory tree, set recursive=true (destructive)."
-                ),
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Path relative to workspace (no leading slash, no ..)",
-                        },
-                        "recursive": {
-                            "type": "boolean",
-                            "description": "If true, delete a non-empty directory tree with shutil.rmtree",
-                            "default": False,
-                        },
-                    },
-                    "required": ["path"],
-                },
-            }
-        )
-    return tools
-
-
-def _run_tool(
-    *,
-    name: str,
-    tool_input: dict[str, Any],
-    cwd: Path,
-    allow_write: bool,
-) -> tuple[str, bool]:
-    """Returns (tool_result_text, changed_workspace_file)."""
-    if name == "read_file":
-        rel = str(tool_input.get("path", "")).strip()
-        try:
-            target = _safe_workspace_path(cwd, rel)
-        except ValueError as exc:
-            return f"ERROR: {exc}", False
-        if not target.is_file():
-            return f"ERROR: not a file: {rel}", False
-        try:
-            return target.read_text(encoding="utf-8"), False
-        except OSError as exc:
-            return f"ERROR: {exc}", False
-
-    if name == "write_file":
-        if not allow_write:
-            return "ERROR: write_file is disabled in this session (use agent/debug mode with full access).", False
-        rel = str(tool_input.get("path", "")).strip()
-        content = tool_input.get("content", "")
-        if not isinstance(content, str):
-            content = json.dumps(content, ensure_ascii=False)
-        try:
-            target = _safe_workspace_path(cwd, rel)
-        except ValueError as exc:
-            return f"ERROR: {exc}", False
-        if target.exists() and target.is_dir():
-            return f"ERROR: path is a directory: {rel}", False
-        try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
-        except OSError as exc:
-            return f"ERROR: {exc}", False
-        return f"OK: wrote {len(content)} characters to {rel}", True
-
-    if name == "delete_path":
-        if not allow_write:
-            return "ERROR: delete_path is disabled in this session.", False
-        rel = str(tool_input.get("path", "")).strip()
-        recursive = bool(tool_input.get("recursive", False))
-        try:
-            target = _safe_workspace_path(cwd, rel)
-        except ValueError as exc:
-            return f"ERROR: {exc}", False
-        if not target.exists():
-            return f"OK: nothing to delete at {rel}", False
-        if target.is_file():
-            try:
-                target.unlink()
-            except OSError as exc:
-                return f"ERROR: {exc}", False
-            return f"OK: deleted file {rel}", True
-        if target.is_dir():
-            if recursive:
-                try:
-                    shutil.rmtree(target)
-                except OSError as exc:
-                    return f"ERROR: {exc}", False
-                return f"OK: recursively deleted directory {rel}", True
-            try:
-                target.rmdir()
-                return f"OK: deleted empty directory {rel}", True
-            except OSError:
-                return (
-                    "ERROR: directory not empty; pass recursive=true only if you intend to delete the entire tree.",
-                    False,
-                )
-
-    return f"ERROR: unknown tool {name!r}", False
-
-
 def run_independent_tool_loop(
     client: anthropic.Anthropic,
     *,
@@ -322,7 +171,7 @@ def run_independent_tool_loop(
     Returns (final_answer_text, input_tokens, output_tokens, error, changed_files).
     """
     repair_independent_message_history(messages)
-    tools = _workspace_tool_definitions(allow_write=allow_write)
+    tools = workspace_tool_definitions(allow_write=allow_write)
     max_rounds = _max_tool_rounds()
     max_tokens = _max_tokens_per_turn()
     total_in = 0
@@ -368,7 +217,7 @@ def run_independent_tool_loop(
                 tname = getattr(tb, "name", "") or ""
                 raw_in = getattr(tb, "input", None)
                 tin = _coerce_tool_input(raw_in)
-                body, did_write = _run_tool(name=tname, tool_input=tin, cwd=cwd, allow_write=allow_write)
+                body, did_write = run_host_tool(name=tname, tool_input=tin, cwd=cwd, allow_write=allow_write)
                 if did_write:
                     changed_files = True
                 user_blocks.append(

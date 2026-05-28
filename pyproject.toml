@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "claude-cli-agent"
-version = "0.2.28"
+version = "0.2.30"
 description = "Production-oriented coding agent CLI built on the Claude Agent SDK."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,6 +23,11 @@ dependencies = [
 
 [project.optional-dependencies]
 graphify = ["graphifyy>=0.4.0"]
+copilot = ["github-copilot-sdk>=0.1.0"]
+langchain-copilot = [
+  "langchain-core>=0.3.0",
+  "langchain-githubcopilot-chat>=0.6.0",
+]
 dev = ["pytest>=8.0.0", "ruff>=0.6.0"]
 
 [project.scripts]

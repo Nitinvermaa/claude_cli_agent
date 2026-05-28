@@ -153,7 +153,7 @@ def render_shortcuts_help(console: Console) -> None:
     console.print(Rule(style=accent))
     console.print(
         Text(
-            "cagent runs the Claude Agent SDK with local approvals, @-annotations, graphify, and dual backends "
+            "cagent runs with pluggable backends (default: Anthropic API), approvals, @-annotations, and graphify "
             "(claude_code or independent) — from your terminal.",
             style=dim_style,
         )
